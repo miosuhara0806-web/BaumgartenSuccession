@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 850" fill="none" stroke="#355577" stroke-width="1.5">
+  <!-- Atmospheric geography only: no canonical borders, cities or labels. -->
+  <path d="m139 145 91-22 58 39 57-61 91 21 65-50 76 44 48-12 31 73 85 20 37 62-36 48 71 65-21 70 27 42-50 79-73 10-18 76-92 36-39 67-97-18-71 35-53-56-81-5-28-69-55-35 21-80-43-46 28-88-26-76 40-52Z" fill="#355577" fill-opacity=".12"/>
+  <path d="M252 195Q336 258 386 328T480 507T648 671M691 226Q605 299 618 394T539 558M233 488Q339 447 427 494T684 503" stroke-width="5" stroke-opacity=".45"/>
+  <g stroke-dasharray="5 9"><path d="m268 253 214 39 161-43M482 292l40 257-168 85M522 549l158-92"/></g>
+  <g stroke-width="2"><path d="m321 199 16-27 17 27m-27-9h20m39 25 19-32 19 32m-31-11h24M594 606l19-32 19 32m-31-11h24m21-17 16-27 17 27M208 388l20-33 20 33m-32-12h25"/></g>
+  <g transform="translate(816 120)"><circle r="38"/><path d="M0-55V55M-55 0H55M0-35 9 0 0 35-9 0Z"/><circle r="5"/></g>
+  <g stroke-opacity=".4"><path d="M90 760H920M90 780H920M120 70V810M880 70V810"/></g>
+</svg>

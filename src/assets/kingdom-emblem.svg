@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 420" fill="none">
+  <!-- Decorative interpretation of the blue and gold kingdom reference. -->
+  <defs>
+    <linearGradient id="blue" x1="90" y1="90" x2="290" y2="370" gradientUnits="userSpaceOnUse"><stop stop-color="#254e79"/><stop offset="1" stop-color="#132e50"/></linearGradient>
+    <linearGradient id="gold" x1="100" y1="30" x2="280" y2="370" gradientUnits="userSpaceOnUse"><stop stop-color="#e3ce96"/><stop offset=".5" stop-color="#c0a164"/><stop offset="1" stop-color="#dec58c"/></linearGradient>
+    <path id="leaf" d="M0 0C-11-4-17-17-12-27C0-24 6-11 0 0Z"/>
+    <path id="lily" d="M0 16V-9C-13-21-10-32 0-38C10-32 13-21 0-9M0 1C-24-23-32-1-12 6M0 1C24-23 32-1 12 6M-10 10H10M0 16-7 24H7Z"/>
+  </defs>
+  <g stroke="url(#gold)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M102 94 90 51 123 70 146 43 180 64 214 43 237 70 270 51 258 94Z" fill="url(#blue)"/>
+    <path d="M102 84Q180 65 258 84M102 94Q180 77 258 94M146 43Q144 21 180 22Q216 21 214 43"/>
+    <path d="M180 22V6M174 12H186"/>
+    <g fill="url(#gold)"><circle cx="90" cy="49" r="3"/><circle cx="146" cy="40" r="3"/><circle cx="214" cy="40" r="3"/><circle cx="270" cy="49" r="3"/><path d="m180 80 5 5-5 5-5-5Z"/></g>
+    <path d="M78 117Q180 89 282 117V236C282 301 230 350 180 377C130 350 78 301 78 236Z" fill="url(#blue)" stroke-width="3"/>
+    <path d="M87 124Q180 100 273 124V235C273 294 226 340 180 367C134 340 87 294 87 235Z" stroke-opacity=".6"/>
+    <path d="M180 164V307M180 258C138 241 118 221 111 195M180 231C154 213 145 183 142 159M180 241C216 225 237 209 244 180M180 206C198 193 210 174 217 154M180 284C155 272 126 278 107 257M180 267C211 255 236 266 254 245" stroke-width="3"/>
+    <path d="M180 287C178 319 164 321 148 334M180 292C184 320 201 323 215 333M180 304V344M176 312 167 338M187 313 197 341" stroke-width="2"/>
+    <g fill="url(#gold)" stroke="none">
+      <use href="#leaf" transform="translate(115 205) rotate(-35)"/><use href="#leaf" transform="translate(126 221) rotate(-65)"/><use href="#leaf" transform="translate(144 235) rotate(-90)"/>
+      <use href="#leaf" transform="translate(150 192) rotate(-10)"/><use href="#leaf" transform="translate(161 216) rotate(25)"/><use href="#leaf" transform="translate(180 183) rotate(20)"/>
+      <use href="#leaf" transform="translate(199 196) rotate(65)"/><use href="#leaf" transform="translate(213 176) rotate(45)"/>
+      <use href="#leaf" transform="translate(240 193) rotate(80)"/><use href="#leaf" transform="translate(226 215) rotate(95)"/><use href="#leaf" transform="translate(208 230) rotate(110)"/>
+      <use href="#leaf" transform="translate(130 273) rotate(-70)"/><use href="#leaf" transform="translate(236 258) rotate(100)"/>
+      <path d="m180 130 4 10 10 4-10 4-4 10-4-10-10-4 10-4Z"/>
+    </g>
+    <path d="M65 148C29 151 40 205 58 195C76 182 35 174 33 221C31 252 46 285 66 302M295 148C331 151 320 205 302 195C284 182 325 174 327 221C329 252 314 285 294 302" stroke-opacity=".85"/>
+    <path d="M65 318Q32 299 26 276M295 318Q328 299 334 276M94 336Q81 363 120 365M266 336Q279 363 240 365" stroke-opacity=".65"/>
+    <use href="#lily" transform="translate(48 266) scale(.7)" fill="#e0ca95" stroke-width="1"/>
+    <use href="#lily" transform="translate(312 266) scale(.7)" fill="#e0ca95" stroke-width="1"/>
+    <path d="m180 387 6 10-6 10-6-10Z" fill="url(#gold)"/>
+  </g>
+</svg>
