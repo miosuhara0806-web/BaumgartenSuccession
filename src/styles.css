@@ -7,7 +7,22 @@
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
 /* Title decoration only. The game screens keep their existing palette and layout. */
+@font-face {
+  font-family: 'Shippori Mincho Title';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/shippori-mincho-title-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Shippori Mincho Title';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/shippori-mincho-title-600.woff2') format('woff2');
+}
 .title-page {
+  --title-serif: 'Shippori Mincho Title', 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif CJK JP', serif;
   --title-blue: #1b3858;
   --title-gold: #a18149;
   position: relative;
@@ -37,15 +52,15 @@
   opacity: .075;
 }
 .title-copy { min-width: 0; position: relative; }
-.title-copy .eyebrow { color: var(--title-gold); letter-spacing: .26em; }
-.title-copy h1 { margin-bottom: 12px; line-height: 1.5; }
+.title-copy .eyebrow { font-family: var(--title-serif); font-weight: 400; font-size: .8rem; color: #80653f; letter-spacing: .18em; }
+.title-copy h1 { font-family: var(--title-serif); font-weight: 600; margin-bottom: 12px; line-height: 1.55; }
 .title-name { display: block; font-size: clamp(1.35rem, 2.3vw, 2.15rem); letter-spacing: .05em; }
 .title-war { display: block; font-size: clamp(2.6rem, 4.7vw, 4.2rem); letter-spacing: .15em; }
 .title-flourish { display: flex; align-items: center; gap: 14px; max-width: 320px; margin: 14px 0 25px; color: var(--title-gold); font-size: .8rem; }
 .title-flourish::before, .title-flourish::after { content: ""; height: 1px; background: #b79b6680; }
 .title-flourish::before { width: 32px; }
 .title-flourish::after { flex: 1; background: linear-gradient(90deg, #b79b6680, transparent); }
-.title-copy .lead { color: #40536a; margin-bottom: 22px; }
+.title-copy .lead { font-family: var(--title-serif); font-weight: 400; line-height: 2.1; letter-spacing: .025em; color: #40536a; margin-bottom: 22px; }
 .title-copy .muted { color: #5d6872; }
 .title-menu { max-width: 410px; gap: 11px; margin: 27px 0; }
 .title-menu .button {
@@ -86,7 +101,7 @@
   .title-page::after { background-position: 54% top; background-size: auto 760px; opacity: .065; }
   .title-emblem { display: block; margin: 0 0 17px; }
   .title-emblem .kingdom-emblem { display: block; width: 86px; height: auto; }
-  .title-copy .eyebrow { font-size: .68rem; margin-bottom: 10px; }
+  .title-copy .eyebrow { font-size: .76rem; margin-bottom: 10px; }
   .title-copy h1 { margin-bottom: 10px; }
   .title-name { font-size: clamp(1.22rem, 5.5vw, 1.85rem); letter-spacing: .03em; }
   .title-war { font-size: clamp(2.5rem, 10vw, 3.5rem); letter-spacing: .14em; }
