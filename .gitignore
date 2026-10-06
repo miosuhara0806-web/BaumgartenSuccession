@@ -1,0 +1,11 @@
+dist/
+node_modules/
+*.log
+.DS_Store
+.env
+.env.*
+.codex/
+.agents/
+# Local planning documents are not needed in the public repository.
+/バウムガルテン王国の継承戦_Codex実装開始仕様書_v0.3.md
+/docs/implementation-contract.md
