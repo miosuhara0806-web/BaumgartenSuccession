@@ -8,6 +8,13 @@
 
 /* Title decoration only. The game screens keep their existing palette and layout. */
 @font-face {
+  font-family: 'Kaisei Decol Logo';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/kaisei-decol-logo-700.woff2') format('woff2');
+}
+@font-face {
   font-family: 'Shippori Mincho Title';
   font-style: normal;
   font-weight: 400;
@@ -22,6 +29,7 @@
   src: url('./assets/fonts/shippori-mincho-title-600.woff2') format('woff2');
 }
 .title-page {
+  --title-logo: 'Kaisei Decol Logo', 'Shippori Mincho Title', 'Yu Mincho', 'Hiragino Mincho ProN', serif;
   --title-serif: 'Shippori Mincho Title', 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif CJK JP', serif;
   --title-blue: #1b3858;
   --title-gold: #a18149;
@@ -53,9 +61,9 @@
 }
 .title-copy { min-width: 0; position: relative; }
 .title-copy .eyebrow { font-family: var(--title-serif); font-weight: 400; font-size: .8rem; color: #80653f; letter-spacing: .18em; }
-.title-copy h1 { font-family: var(--title-serif); font-weight: 600; margin-bottom: 12px; line-height: 1.55; }
+.title-copy h1 { font-family: var(--title-logo); font-weight: 700; margin-bottom: 12px; line-height: 1.6; }
 .title-name { display: block; font-size: clamp(1.35rem, 2.3vw, 2.15rem); letter-spacing: .05em; }
-.title-war { display: block; font-size: clamp(2.6rem, 4.7vw, 4.2rem); letter-spacing: .15em; }
+.title-war { display: block; font-size: clamp(2.9rem, 5.2vw, 4.6rem); letter-spacing: .2em; line-height: 1.5; }
 .title-flourish { display: flex; align-items: center; gap: 14px; max-width: 320px; margin: 14px 0 25px; color: var(--title-gold); font-size: .8rem; }
 .title-flourish::before, .title-flourish::after { content: ""; height: 1px; background: #b79b6680; }
 .title-flourish::before { width: 32px; }
@@ -104,7 +112,7 @@
   .title-copy .eyebrow { font-size: .76rem; margin-bottom: 10px; }
   .title-copy h1 { margin-bottom: 10px; }
   .title-name { font-size: clamp(1.22rem, 5.5vw, 1.85rem); letter-spacing: .03em; }
-  .title-war { font-size: clamp(2.5rem, 10vw, 3.5rem); letter-spacing: .14em; }
+  .title-war { font-size: clamp(2.9rem, 12vw, 4rem); letter-spacing: .2em; }
   .title-flourish { margin: 12px 0 20px; }
   .title-copy .lead { font-size: .97rem; margin-bottom: 20px; }
   .title-copy .small { font-size: .8rem; }
