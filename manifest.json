@@ -1,11 +1,11 @@
 {
-  "id": "./",
+  "id": "/BaumgartenSuccession/",
   "name": "バウムガルテン王国の継承戦",
   "short_name": "バウムガルテン継承戦",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
-  "display": "browser",
+  "display": "standalone",
   "theme_color": "#173d37",
   "icons": [
     {
