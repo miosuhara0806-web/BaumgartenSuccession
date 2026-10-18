@@ -18,7 +18,7 @@ const sceneKnown = (id, content) => id === 'map' || own(content.scenes, id);
 
 export function isLegalParty(partyIds, content) {
   return unique(partyIds) && partyIds.length === 4 && partyIds.every(id => own(content.characters, id)) &&
-    Object.entries(ROLE_LIMITS).every(([role, count]) => partyIds.filter(id => content.characters[id].role === role).length === count);
+    (content.partySelection === 'free' || Object.entries(ROLE_LIMITS).every(([role, count]) => partyIds.filter(id => content.characters[id].role === role).length === count));
 }
 
 export function getOpponentParty(run, content) {
@@ -156,8 +156,10 @@ function addInformation(run, informationId, source, content) {
 }
 
 function beginTrial(run, trial, content, useRegionEntry = false) {
+  const regionEntry = useRegionEntry ? content.regions[trial.regionId].entrySceneId : null;
+  const sceneId = regionEntry && regionEntry !== trial.entrySceneId ? regionEntry : trial.introductionSceneId || trial.entrySceneId;
   run.position = { phase: 'trial', stage: 'intro', regionId: trial.regionId, trialId: trial.id,
-    sceneId: useRegionEntry ? content.regions[trial.regionId].entrySceneId || trial.entrySceneId : trial.entrySceneId, blockIndex: 0 };
+    sceneId, blockIndex: 0 };
 }
 
 function enterMap(run, content) {
@@ -271,14 +273,14 @@ export function transition(current, action, content) {
       if (run.partyIds.includes(action.characterId)) run.partyIds = run.partyIds.filter(id => id !== action.characterId);
       else {
         const role = content.characters[action.characterId].role;
-        assert(run.partyIds.filter(id => content.characters[id].role === role).length < ROLE_LIMITS[role], 'この役割の枠は満員です。先に選択済みの人物を外してください。');
+        assert(content.partySelection === 'free' ? run.partyIds.length < 4 : run.partyIds.filter(id => content.characters[id].role === role).length < ROLE_LIMITS[role], content.partySelection === 'free' ? '同行者は4人までです。先に選択済みの人物を外してください。' : 'この役割の枠は満員です。先に選択済みの人物を外してください。');
         run.partyIds.push(action.characterId);
       }
       run.partyIds.sort((a, b) => content.characters[a].displayOrder - content.characters[b].displayOrder);
       break;
     }
     case 'CONFIRM_PARTY':
-      assert(p.phase === 'draft' && isLegalParty(run.partyIds, content), '近接2人・遠隔1人・回復1人を選んでください。');
+      assert(p.phase === 'draft' && isLegalParty(run.partyIds, content), content.partySelection === 'free' ? '同行者を4人選んでください。' : '近接2人・遠隔1人・回復1人を選んでください。');
       run.position = { phase: 'partyConfirmation' }; break;
     case 'BACK_TO_DRAFT':
       assert(p.phase === 'partyConfirmation', '選抜へ戻れません。'); run.position = { phase: 'draft' }; break;
@@ -394,7 +396,7 @@ function sceneWasReached(sceneId, run, content) {
     }
     for (const trialId of region.trialIds) {
       const trial = content.trials[trialId];
-      if (sceneInChain(sceneId, trial.entrySceneId, content)) return trialWasReached(trialId, run, content);
+      if (sceneInChain(sceneId, trial.entrySceneId, content) || sceneInChain(sceneId, trial.introductionSceneId, content)) return trialWasReached(trialId, run, content);
       if (sceneInChain(sceneId, trial.decisionSceneId, content)) return trialWasReached(trialId, run, content, true);
     }
   }
@@ -451,7 +453,7 @@ function validatePosition(position, run, content, nested = false) {
       assert(region.trialIds.slice(0, index).every(id => run.trialResults[id]) && region.trialIds.slice(index + 1).every(id => !run.trialResults[id]), '試練の順序が不正です。');
       if (p.phase === 'trial') {
         assert(['intro', 'decision'].includes(p.stage) && !run.trialResults[trial.id], '判断前の位置が不正です。');
-        assert(p.stage === 'intro' ? sceneInChain(p.sceneId, trial.entrySceneId, content) || (index === 0 && sceneInChain(p.sceneId, region.entrySceneId, content)) : sceneInChain(p.sceneId, trial.decisionSceneId, content), '試練の場面が不正です。');
+        assert(p.stage === 'intro' ? sceneInChain(p.sceneId, trial.introductionSceneId, content) || sceneInChain(p.sceneId, trial.entrySceneId, content) || (index === 0 && sceneInChain(p.sceneId, region.entrySceneId, content)) : sceneInChain(p.sceneId, trial.decisionSceneId, content), '試練の場面が不正です。');
       } else {
         assert(run.trialResults[trial.id] && ['reading', 'done'].includes(p.stage) && p.sceneId === trial.decisionSceneId, '判断結果の位置が不正です。');
         assert((p.stage === 'done') === (p.blockIndex === blockIdsFor({ ...run, position: p }, content).length), '結果の読了状態が不正です。');
@@ -485,7 +487,7 @@ export function validateRun(run, content) {
   for (const key of ['chapterProgress', 'trialResults', 'acquiredInformation', 'theoInvestigations', 'storyEvents']) assert(object(run[key]), `${key} が不正です。`);
   assert(object(run.position) && PHASES.has(run.position.phase), '進行位置が不正です。');
   assert(unique(run.partyIds) && run.partyIds.length <= 4 && run.partyIds.every(id => own(content.characters, id)), '同行者IDが不正です。');
-  for (const [role, limit] of Object.entries(ROLE_LIMITS)) assert(run.partyIds.filter(id => content.characters[id].role === role).length <= limit, '役割の人数が不正です。');
+  if (content.partySelection !== 'free') for (const [role, limit] of Object.entries(ROLE_LIMITS)) assert(run.partyIds.filter(id => content.characters[id].role === role).length <= limit, '役割の人数が不正です。');
   assert(run.commanderId === null || own(content.commanders, run.commanderId), '指揮官IDが不正です。');
   if (!['intro', 'commanderSelection'].includes(run.position.phase)) assert(own(content.commanders, run.commanderId), '指揮官が未選択です。');
   if (!SETUP_PHASES.has(run.position.phase) || run.position.phase === 'partyConfirmation') assert(isLegalParty(run.partyIds, content), '編成が不正です。');
@@ -527,6 +529,7 @@ export function validateRun(run, content) {
     const choice = trial.choices.find(item => item.id === result.choiceId);
     assert(choice && evaluateCondition(choice.condition, run, content), '試練結果の選択肢が不正です。');
     validateAward(trial, result.awardedPoints, result.governanceTags);
+    if (content.enforceChoiceScores) assert(result.awardedPoints === choice.points && JSON.stringify(result.governanceTags) === JSON.stringify(choice.governanceTags), '正式配点と保存済み結果が一致しません。');
     assert((result.policyId || null) === (choice.policyId || null), '政策IDが不正です。');
   }
   assert(getTotalScore(run) <= (run.mode === 'albaPrototype' ? 20 : 100), '継承点合計が範囲外です。');
