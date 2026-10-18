@@ -142,6 +142,14 @@
   .dialogue-actions { flex-wrap: wrap; }
 }
 .memo-text { white-space: pre-line; overflow-wrap: anywhere; }
+.conversation-text {
+  max-height: min(55dvh, 32rem);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding-inline-end: .5em;
+}
+.conversation-text p { margin: 0 0 1.25em; }
+.conversation-text p:last-child { margin-bottom: 0; }
 @media (max-width: 600px) {
   .opinion-list { grid-template-columns: 1fr; }
   .bubble-icon { white-space: nowrap; flex-shrink: 0; }

@@ -141,6 +141,22 @@ function dialoguePanel(block) {
   const read=reader.readTextKeys.includes(block.readKey);
   return `<section class="dialogue-panel"><div class="speaker">${esc(nameOf(block.speakerId))}</div><div class="dialogue-text">${esc(block.text)}</div><div class="dialogue-actions"><span class="read-indicator">${read?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!read?'disabled':''}>既読スキップ</button>${button('次へ →','ack','','primary')}</div></div></section>`;
 }
+function conversationBlocks(startIndex=0) {
+  const p=run?.position;
+  if(p?.phase!=='conversation') return [];
+  const conversation=content.conversations[p.conversationId];
+  if(conversation?.participantIds.length!==1) return [];
+  return conversation.blockIds.slice(startIndex).map((_,i)=>getCurrentText({
+    ...run,position:{...p,blockIndex:startIndex+i},
+  },content)).filter(Boolean);
+}
+function conversationPanel() {
+  const blocks=conversationBlocks();
+  const allRead=blocks.every(block=>reader.readTextKeys.includes(block.readKey));
+  const remainingRead=conversationBlocks(run.position.blockIndex).every(block=>reader.readTextKeys.includes(block.readKey));
+  const speaker=nameOf(blocks[0].speakerId);
+  return `<section class="dialogue-panel"><div class="speaker">${esc(speaker)}</div><div class="dialogue-text conversation-text" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${blocks.map(block=>`<p>${esc(block.text)}</p>`).join('')}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
+}
 function assignments(choice) {
   const list=getCrisisAssignments(run,choice,content);
   return list.length?`<div class="assignment-list">${list.map(a=>`<div><b>${esc(nameOf(a.characterId))}</b>${esc(a.text)}</div>`).join('')}</div>`:'';
@@ -161,6 +177,7 @@ function trialPage() {
     body+=`<div class="result-score"><div class="number">${result.awardedPoints}<small> / ${trial.maxPoints}</small></div><div><p>今回の継承点 <span class="small muted">${content.contentStatus === 'fixture' ? '（仮配点）' : '（正式配点）'}</span></p><p class="small muted">旅の合計 ${getTotalScore(run)} / 100 · 確定済み</p></div></div>`;
   }
   if(content.scenes[p.sceneId]?.contentStatus==='reviewPending') body+=introductionPanel();
+  else if(conversationBlocks().length) body+=conversationPanel();
   else if(block) body+=dialoguePanel(block);
   else if(p.phase==='trial'&&p.stage==='decision') body+=choicesPanel();
   else if(p.phase==='trialResult'&&p.stage==='done') {
@@ -209,9 +226,23 @@ function recordModal(id) {
 }
 function logModal() {
   const entries=[...(run?.recentDialogueLog || [])];
-  const current=run?getCurrentText(run,content):null;
-  if(current && entries.at(-1)?.readKey!==current.readKey) entries.push(current);
-  return { title:'会話ログ', body:entries.length?`<p class="small muted">この周回の直近200発言。閲覧では情報の取得や採点を行いません。</p>${entries.slice(-200).map(e=>`<article class="log-entry"><strong>${esc(nameOf(e.speakerId))}</strong><p>${esc(e.text)}</p></article>`).join('')}`:'<p class="empty">まだ表示された会話はありません。</p>',footer:button('閉じる','close-modal') };
+  const current=conversationBlocks(run?.position.blockIndex);
+  if(!current.length && run) {
+    const block=getCurrentText(run,content);
+    if(block) current.push(block);
+  }
+  for(const block of current) if(entries.at(-1)?.readKey!==block.readKey) entries.push({...block,sceneId:run.position.sceneId});
+  const groups=[];
+  for(const entry of entries.slice(-200)) {
+    const id=entry.textId || entry.id;
+    const conversation=values(content.conversations).find(c=>c.blockIds.includes(id)&&c.sceneIds.includes(entry.sceneId));
+    const index=conversation?.blockIds.indexOf(id);
+    const previous=groups.at(-1);
+    if(conversation && previous?.conversationId===conversation.id && previous.sceneId===entry.sceneId && previous.speakerId===entry.speakerId && index>previous.lastIndex) {
+      previous.entries.push(entry);previous.lastIndex=index;
+    } else groups.push({conversationId:conversation?.id,sceneId:entry.sceneId,speakerId:entry.speakerId,lastIndex:index,entries:[entry]});
+  }
+  return { title:'会話ログ', body:entries.length?`<p class="small muted">この周回の直近200発言。閲覧では情報の取得や採点を行いません。</p>${groups.map(group=>`<article class="log-entry"><strong>${esc(nameOf(group.speakerId))}</strong>${group.entries.map(e=>`<p>${esc(e.text)}</p>`).join('')}</article>`).join('')}`:'<p class="empty">まだ表示された会話はありません。</p>',footer:button('閉じる','close-modal') };
 }
 function slotSummary(slot) {
   if(!slot) return '<p class="muted">空のスロット</p>';
@@ -231,6 +262,9 @@ function modalMarkup() {
 }
 function render() {
   const active=document.activeElement;
+  const previousConversation=app.querySelector('.conversation-text');
+  const conversationScrollId=previousConversation?.dataset?.conversationId;
+  const conversationScrollTop=previousConversation?.scrollTop || 0;
   const focusData=active?.dataset?.action?{action:active.dataset.action,id:active.dataset.id}:null;
   const modalScrollTop=modal && modal===renderedModal ? app.querySelector('[role="dialog"]')?.scrollTop || 0 : 0;
   let body='';
@@ -247,6 +281,11 @@ function render() {
   }
   app.innerHTML=header()+(error?`<div class="error-banner" role="alert"><p>${esc(error)}</p><div class="button-row">${button('再試行','retry','', 'compact')}${ready?button('保存済みをロード','saves','','compact'):''}</div></div>`:'')+body+(!title?'<footer class="footer-note">バウムガルテン王国の継承戦 / v0.3 基盤試作 · 正式な王国史は作成されません。</footer>':'')+modalMarkup()+(toast?`<div class="toast" role="status">${esc(toast)}</div>`:'')+(busy?'<div class="busy-corner" role="status">保存しています…</div>':'');
   if(busy) app.querySelectorAll('button').forEach(b=>b.disabled=true);
+  const conversationText=app.querySelector('.conversation-text');
+  if(conversationScrollId && conversationText?.dataset?.conversationId===conversationScrollId) {
+    conversationText.scrollTop=conversationScrollTop;
+    if(active===previousConversation) conversationText.focus({preventScroll:true});
+  }
   if(modal) {
     app.querySelectorAll(':scope > :not(.modal-backdrop):not(.toast):not(.busy-corner)').forEach(el=>el.inert=true);
     const dialog=app.querySelector('[role="dialog"]');
@@ -301,7 +340,8 @@ async function perform(action) {
   const oldScene=run.position.sceneId;
   const block=action.type==='ACK_TEXT'?getCurrentText(run,content):null;
   const blocks=action.type==='ACK_INTRODUCTION'
-    ? introductionBlocks(oldScene).slice(run.position.blockIndex) : block?[block]:[];
+    ? introductionBlocks(oldScene).slice(run.position.blockIndex)
+    : action.type==='ACK_CONVERSATION' ? conversationBlocks(run.position.blockIndex) : block?[block]:[];
   let next;
   try {
     if(action.type==='ACK_INTRODUCTION') {
@@ -309,6 +349,13 @@ async function perform(action) {
       next=run;
       for(const entry of blocks) {
         if(getCurrentText(next,content)?.id!==entry.id) throw new Error('導入の読了位置が一致しません。');
+        next=transition(next,{type:'ACK_TEXT'},content);
+      }
+    } else if(action.type==='ACK_CONVERSATION') {
+      if(!blocks.length) return;
+      next=run;
+      for(const entry of blocks) {
+        if(getCurrentText(next,content)?.id!==entry.id) throw new Error('会話の確認位置が一致しません。');
         next=transition(next,{type:'ACK_TEXT'},content);
       }
     } else next=transition(run,action,content);
@@ -338,6 +385,11 @@ async function startNew() {
 }
 async function skipRead() {
   if(busy||pending) return;
+  const conversation=conversationBlocks(run.position.blockIndex);
+  if(conversation.length) {
+    if(conversation.every(block=>reader.readTextKeys.includes(block.readKey))) await perform({type:'ACK_CONVERSATION'});
+    return;
+  }
   const introduction=introductionBlocks(run.position.sceneId).slice(run.position.blockIndex);
   if(introduction.length) {
     if(introduction.every(block=>reader.readTextKeys.includes(block.readKey))) await perform({type:'ACK_INTRODUCTION'});
@@ -360,6 +412,7 @@ async function handle(action,id) {
   switch(action) {
     case 'introduction': modal=introductionModal(id); render(); break;
     case 'ack-introduction': await perform({type:'ACK_INTRODUCTION'}); break;
+    case 'ack-conversation': await perform({type:'ACK_CONVERSATION'}); break;
     case 'new':
       await refreshSlots();
       if(slots.auto) confirmDialog('新しい旅をはじめる','<p>現在のオートセーブを、新しい周回で置き換えます。</p><p class="small muted">手動セーブ三枠、周回をまたぐ既読、王国史は保持されます。</p>',startNew,'新しい旅をはじめる');
