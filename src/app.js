@@ -155,7 +155,10 @@ function conversationPanel() {
   const allRead=blocks.every(block=>reader.readTextKeys.includes(block.readKey));
   const remainingRead=conversationBlocks(run.position.blockIndex).every(block=>reader.readTextKeys.includes(block.readKey));
   const speaker=nameOf(blocks[0].speakerId);
-  return `<section class="dialogue-panel"><div class="speaker">${esc(speaker)}</div><div class="dialogue-text conversation-text" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${blocks.map(block=>`<p>${esc(block.text)}</p>`).join('')}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
+  return `<section class="dialogue-panel"><div class="speaker">${esc(speaker)}</div><div class="dialogue-text conversation-text" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${blocks.map(block=>`<p>${esc(companionSpeechText(block.text))}</p>`).join('')}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
+}
+function companionSpeechText(text) {
+  return text.startsWith('「') && text.endsWith('」') ? text.slice(1,-1) : text;
 }
 function assignments(choice) {
   const list=getCrisisAssignments(run,choice,content);
@@ -242,7 +245,7 @@ function logModal() {
       previous.entries.push(entry);previous.lastIndex=index;
     } else groups.push({conversationId:conversation?.id,sceneId:entry.sceneId,speakerId:entry.speakerId,lastIndex:index,entries:[entry]});
   }
-  return { title:'会話ログ', body:entries.length?`<p class="small muted">この周回の直近200発言。閲覧では情報の取得や採点を行いません。</p>${groups.map(group=>`<article class="log-entry"><strong>${esc(nameOf(group.speakerId))}</strong>${group.entries.map(e=>`<p>${esc(e.text)}</p>`).join('')}</article>`).join('')}`:'<p class="empty">まだ表示された会話はありません。</p>',footer:button('閉じる','close-modal') };
+  return { title:'会話ログ', body:entries.length?`<p class="small muted">この周回の直近200発言。閲覧では情報の取得や採点を行いません。</p>${groups.map(group=>`<article class="log-entry"><strong>${esc(nameOf(group.speakerId))}</strong>${group.entries.map(e=>`<p>${esc(group.conversationId && content.characters[group.speakerId] ? companionSpeechText(e.text) : e.text)}</p>`).join('')}</article>`).join('')}`:'<p class="empty">まだ表示された会話はありません。</p>',footer:button('閉じる','close-modal') };
 }
 function slotSummary(slot) {
   if(!slot) return '<p class="muted">空のスロット</p>';

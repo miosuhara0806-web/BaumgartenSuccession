@@ -48,6 +48,7 @@ test('continuous introduction acknowledgement is atomic, retries once, and viewi
   const original=app.state();
   const viewer=app.introductionModal('alba.small2');
   assert.match(viewer.body,/novel-text/);
+  assert.ok(viewer.body.includes('「魔物の数は？ 住民への被害は出ていますか？」'));
   assert.deepEqual(app.state(),original);
   const commit=storage.commitAuto;
   let calls=0;
@@ -116,11 +117,12 @@ test('each of the ten companion opinions displays all exact lines and completes 
       const markup=app.trialPage();
       assert.equal((markup.match(/data-action="ack-conversation"/g)||[]).length,1);
       assert.doesNotMatch(markup,/data-action="ack"/);
-      assert.equal((markup.match(/<p>「/g)||[]).length,3);
+      assert.equal((markup.match(/<p>/g)||[]).length,3);
+      assert.doesNotMatch(markup,/<p>「|」<\/p>/);
       const escape=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       let last=-1;
       for(const id of conversation.blockIds) {
-        const index=markup.indexOf(escape(content.textBlocks[id].text));
+        const index=markup.indexOf(escape(content.textBlocks[id].text.slice(1,-1)));
         assert.ok(index>last);last=index;
       }
       let writes=0;const commit=storage.commitAuto;
@@ -134,6 +136,7 @@ test('each of the ten companion opinions displays all exact lines and completes 
       assert.equal(engine.getTotalScore(confirmed.run),engine.getTotalScore(r));
       assert.deepEqual(confirmed.run.acquiredInformation,before.run.acquiredInformation);
       assert.equal(confirmed.run.recentDialogueLog.filter(e=>conversation.blockIds.includes(e.textId)).length,3);
+      assert.deepEqual(Array.from(confirmed.run.recentDialogueLog.filter(e=>conversation.blockIds.includes(e.textId)),e=>e.text),conversation.blockIds.map(id=>content.textBlocks[id].text));
       assert.deepEqual(JSON.parse(JSON.stringify(confirmed.run)),(await storage.getSlot('auto')).run);
     }
     r=read(act(r,'RESOLVE_TRIAL',{trialId:r.position.trialId,choiceId:`choice.${r.position.trialId}.${letter}`}));
@@ -177,7 +180,10 @@ test('partial conversation reading from existing current and legacy saves resume
     assert.equal(app.state().run.position.blockIndex,partial?1:0);
     const markup=app.trialPage();
     assert.match(markup,/conversation-text/);
-    for(const id of pack.conversations[conversationId].blockIds)assert.ok(markup.includes(pack.textBlocks[id].text));
+    for(const id of pack.conversations[conversationId].blockIds) {
+      const text=pack.textBlocks[id].text;
+      assert.ok(markup.includes(text.startsWith('「')&&text.endsWith('」')?text.slice(1,-1):text));
+    }
     await app.handle('ack-conversation');
     const result=app.state();
     assert.equal(result.run.position.phase,'trial');
@@ -219,7 +225,7 @@ test('read-only logs group one conversation under one speaker without merging di
   const pending=app.logModal();
   assert.deepEqual(app.state(),before);
   assert.equal((pending.body.match(/<strong>リゼット<\/strong>/g)||[]).length,2);
-  for(const id of content.conversations['conversation.alba.small2.lisette'].blockIds)assert.ok(pending.body.includes(content.textBlocks[id].text));
+  for(const id of content.conversations['conversation.alba.small2.lisette'].blockIds)assert.ok(pending.body.includes(content.textBlocks[id].text.slice(1,-1)));
   await app.handle('ack-conversation');
   const confirmed=app.state();
   const log=app.logModal();
