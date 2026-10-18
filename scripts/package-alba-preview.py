@@ -4,7 +4,7 @@ from pathlib import Path
 import re, base64, mimetypes, zipfile, json, hashlib, argparse
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--edition', choices=['chapter', 'conversation', 'final'], default='chapter')
+parser.add_argument('--edition', choices=['chapter', 'conversation', 'final', 'portraits'], default='chapter')
 edition = parser.parse_args().edition
 conversation_edition = edition == 'conversation'
 final_edition = edition == 'final'
@@ -12,6 +12,7 @@ settings = {
     'chapter': ('BaumgartenSuccession_AlbaAcceptance_20261018', 'alba-20261018', 'baumgarten-succession-alba-approved-review-20261018', 4178, 'alba-implementation-20261018.md'),
     'conversation': ('BaumgartenSuccession_AlbaConversationPreview_20261018', 'alba-conversation-20261018', 'baumgarten-succession-alba-conversation-review-20261018', 4180, 'alba-conversation-display-20261018.md'),
     'final': ('BaumgartenSuccession_AlbaFinalPreview_20261018', 'alba-final-20261018', 'baumgarten-succession-alba-final-review-20261018', 4184, 'alba-final-implementation-20261018.md'),
+    'portraits': ('BaumgartenSuccession_CommanderPortraitsPreview_20261018', 'commander-portraits-20261018', 'baumgarten-succession-commander-portraits-review-20261018', 4186, 'commander-portraits-20261018.md'),
 }
 stem, directory, db_name, port, report = settings[edition]
 
@@ -58,6 +59,9 @@ for name, file in module_files:
 
 app = replace_imports((root / 'src/app.js').read_text(), root / 'src/app.js')
 app = app.replace('./src/assets/kingdom-emblem.svg', data_url(root / 'src/assets/kingdom-emblem.svg'))
+for portrait in ['commander-alphonse.png', 'commander-rosemond.png']:
+    asset = 'src/assets/portraits/' + portrait
+    app = app.replace('./' + asset, data_url(root / asset))
 css = (root / 'src/styles.css').read_text()
 css = re.sub(r"url\(['\"]?(\./assets/[^)'\"]+)['\"]?\)", lambda m: 'url("' + data_url(root / 'src' / m[1]) + '")', css)
 html = (root / 'index.html').read_text()
@@ -146,6 +150,27 @@ A→C→Bで20点、B→A→Aで13点。リゼットDの点数は4点のまま�
 HTMLを開けない場合、Node.js導入済みPCで node start-preview.cjs を実行し、
 http://127.0.0.1:4184/ を開いてください。停止はCtrl+C。
 実スマートフォン・Safariは未検証です。GitHub・PR・main・Pagesには反映していません。
+"""
+if edition == 'portraits':
+    instructions = """指揮官肖像・検収版（2026-10-18）
+ZIPをすべて展開し、中のHTMLをChromeまたはEdgeで開いてください。
+10月16日版・以前の各検収版は削除・上書きしないでください。
+本版は別名・専用の別DBで保存します。以前の版からセーブは自動取り込みしません。
+
+「はじめから」→導入を読み進める→「指揮官を選ぶ」。
+アルフォンスは赤いマント、ローズモンドは青いマントの添付肖像です。
+髪・装飾の欠け、顔の大きさ、説明文との重なりをPCとスマホで確認してください。
+スマホ幅では各カードの肖像・説明を縦に表示します。ページをスクロールして両方を確認してください。
+「この指揮官で進む」で同行者選抜へ進み、任意4人を選んで出発できます。
+もう一方の指揮官も「はじめから」で確認できます。必要な周回は先に手動保存してください。
+
+直前の正式原稿版を基に、指揮官選択画面の画像表示だけを変更しています。
+原画像の加工、台詞・小説・採点・会話・メモ・テオ・タグ・ゲーム進行・保存形式の変更はありません。
+同行者会話は1人1画面・外側の括弧なし、小説は縦スクロールのままです。
+
+HTMLを直接開けない場合、Node.js導入済みPCで node start-preview.cjs を実行し、
+http://127.0.0.1:4186/ を開いてください。停止はCtrl+C。
+実スマートフォン・Safariは未検証です。GitHubプッシュ・PR・main更新・Pages公開は行っていません。
 """
 (out / '確認方法.txt').write_text(instructions)
 (out / '実装報告.md').write_text((root / 'docs' / report).read_text())

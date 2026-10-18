@@ -64,6 +64,13 @@ function introductionModal(trialId) {
 }
 
 function portrait(person, cls='') {
+  const commanderImages = {
+    'commander.alphonse':'./src/assets/portraits/commander-alphonse.png',
+    'commander.rosemond':'./src/assets/portraits/commander-rosemond.png'
+  };
+  if (cls === 'commander' && commanderImages[person.id]) {
+    return `<div class="portrait commander has-image"><img src="${commanderImages[person.id]}" alt="${esc(person.name)}の肖像" width="502" height="753"></div>`;
+  }
   return `<div class="portrait ${cls}" aria-label="${esc(person.name)}の仮画像枠"><span aria-hidden="true">${esc(person.name.slice(0,1))}</span><small>肖像 準備中</small></div>`;
 }
 function member(person) {

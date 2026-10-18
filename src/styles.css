@@ -154,3 +154,28 @@
   .opinion-list { grid-template-columns: 1fr; }
   .bubble-icon { white-space: nowrap; flex-shrink: 0; }
 }
+
+/* Original transparent portraits, only on the commander selection cards. */
+.commander-card {
+  grid-template-columns: minmax(150px, .8fr) minmax(0, 1fr);
+}
+.commander-card > div { min-width: 0; }
+.commander-card .portrait.has-image {
+  width: 100%;
+  max-width: 240px;
+  min-height: 0;
+  justify-self: center;
+  padding: 8px;
+  background: linear-gradient(150deg, #f6f0df, #e7ddc7);
+}
+.commander-card .portrait.has-image::after { content: none; }
+.commander-card .portrait.has-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+@media (max-width: 1099px) {
+  .commander-card { grid-template-columns: minmax(0, 1fr); }
+  .commander-card .button { width: 100%; }
+}
