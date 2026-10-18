@@ -179,3 +179,48 @@
   .commander-card { grid-template-columns: minmax(0, 1fr); }
   .commander-card .button { width: 100%; }
 }
+
+/* Keep the approved map whole; destination controls do not cover its labels. */
+.map-board { min-height: 0; min-width: 0; }
+.kingdom-map { margin: 0; }
+.kingdom-map .map-art {
+  display: block;
+  position: static;
+  width: 100%;
+  height: auto;
+  opacity: 1;
+}
+.map-detail { margin: 16px; }
+.map-detail summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 9px 0;
+  font-size: .85rem;
+}
+.map-detail-scroll {
+  max-width: 100%;
+  max-height: min(70dvh, 753px);
+  overflow: auto;
+  border: 1px solid var(--line);
+}
+.map-detail-scroll img { display: block; width: 1004px; max-width: none; height: auto; }
+.map-detail summary:focus-visible, .map-detail-scroll:focus-visible {
+  outline: 3px solid #bc8745;
+  outline-offset: 2px;
+}
+.map-destinations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+.map-destinations .map-place {
+  position: static;
+  transform: none;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+@media (max-width: 420px) {
+  .map-destinations { grid-template-columns: minmax(0, 1fr); }
+}

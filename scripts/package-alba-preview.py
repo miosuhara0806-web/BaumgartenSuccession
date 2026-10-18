@@ -4,7 +4,7 @@ from pathlib import Path
 import re, base64, mimetypes, zipfile, json, hashlib, argparse
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--edition', choices=['chapter', 'conversation', 'final', 'portraits'], default='chapter')
+parser.add_argument('--edition', choices=['chapter', 'conversation', 'final', 'portraits', 'map'], default='chapter')
 edition = parser.parse_args().edition
 conversation_edition = edition == 'conversation'
 final_edition = edition == 'final'
@@ -13,6 +13,7 @@ settings = {
     'conversation': ('BaumgartenSuccession_AlbaConversationPreview_20261018', 'alba-conversation-20261018', 'baumgarten-succession-alba-conversation-review-20261018', 4180, 'alba-conversation-display-20261018.md'),
     'final': ('BaumgartenSuccession_AlbaFinalPreview_20261018', 'alba-final-20261018', 'baumgarten-succession-alba-final-review-20261018', 4184, 'alba-final-implementation-20261018.md'),
     'portraits': ('BaumgartenSuccession_CommanderPortraitsPreview_20261018', 'commander-portraits-20261018', 'baumgarten-succession-commander-portraits-review-20261018', 4186, 'commander-portraits-20261018.md'),
+    'map': ('Baumgarten_MapReview_20261018', 'kingdom-map-20261018', 'baumgarten-succession-kingdom-map-review-20261018', 4188, 'kingdom-map-20261018.md'),
 }
 stem, directory, db_name, port, report = settings[edition]
 
@@ -59,6 +60,7 @@ for name, file in module_files:
 
 app = replace_imports((root / 'src/app.js').read_text(), root / 'src/app.js')
 app = app.replace('./src/assets/kingdom-emblem.svg', data_url(root / 'src/assets/kingdom-emblem.svg'))
+app = app.replace('./src/assets/kingdom-map.png', data_url(root / 'src/assets/kingdom-map.png'))
 for portrait in ['commander-alphonse.png', 'commander-rosemond.png']:
     asset = 'src/assets/portraits/' + portrait
     app = app.replace('./' + asset, data_url(root / asset))
@@ -172,6 +174,27 @@ HTMLを直接開けない場合、Node.js導入済みPCで node start-preview.cj
 http://127.0.0.1:4186/ を開いてください。停止はCtrl+C。
 実スマートフォン・Safariは未検証です。GitHubプッシュ・PR・main更新・Pages公開は行っていません。
 """
+if edition == 'map':
+    instructions = """王国地図・検収版（2026-10-18）
+単独HTMLには王国地図・指揮官の肖像・CSS・ゲーム内容をすべて内包しています。
+HTMLだけを保存し、WindowsのEdgeでローカルから開ける構成です。追加画像フォルダや通信は不要です。
+ZIPを使う場合は、Windowsで別フォルダへ「すべて展開」してからHTMLを開いてください。
+以前の検収ファイルは削除・上書きしないでください。
+本版は専用DBで保存し、以前の検収版のセーブを自動取り込みしません。
+
+「はじめから」→導入→指揮官選択→任意4人を選抜→出発→王国地図。
+指揮官2人の肖像も前回どおり表示されることを確認してください。
+地図は添付の完成PNGを加工せず全体表示しています。
+スマホなどで地名が小さい場合は「地図を拡大して見る」を開き、枠内を上下左右にスクロールしてください。
+地図の下に、従来の都市選択・記録ボタンがあります。アルバ以外の未実装都市は準備中のままです。
+アルバのボタンで3試練へ進み、クリア後は同じボタンで記録を開けます。
+正式原稿・会話表示・採点・情報メモ・テオ・タグ・保存形式は前回のままです。
+
+Edge実機での最終確認は美桜のPCでお願いします。
+HTMLを直接開けない場合、Node.js導入済みPCで node start-preview.cjs を実行し、
+http://127.0.0.1:4188/ を開いてください。停止はCtrl+C。
+GitHubへのpush・PR・main更新・Pages公開は行っていません。
+"""
 (out / '確認方法.txt').write_text(instructions)
 (out / '実装報告.md').write_text((root / 'docs' / report).read_text())
 files = [file, out/'start-preview.cjs', out/'確認方法.txt', out/'実装報告.md']
@@ -179,6 +202,19 @@ files = [file, out/'start-preview.cjs', out/'確認方法.txt', out/'実装報�
 files.append(out/'SHA256SUMS.txt')
 archive = out/(stem + '.zip')
 with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
-    for p in files: z.write(p, p.name)
+    for p in files:
+        if edition == 'map':
+            # Ordinary Windows ZIP entries, without Unix file permissions.
+            name = {'確認方法.txt':'README.txt', '実装報告.md':'REPORT.md'}.get(p.name, p.name)
+            data = p.read_bytes()
+            if p.name == 'SHA256SUMS.txt':
+                data = data.replace('確認方法.txt'.encode(), b'README.txt').replace('実装報告.md'.encode(), b'REPORT.md')
+            info = zipfile.ZipInfo(name)
+            info.create_system = 0
+            info.external_attr = 0x20
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
+        else:
+            z.write(p, p.name)
 with zipfile.ZipFile(archive) as z: assert z.testzip() is None
 print(json.dumps({'html':str(file),'zip':str(archive),'bytes':archive.stat().st_size},ensure_ascii=False))
