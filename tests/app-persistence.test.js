@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { content } from '../src/content/fixture.js';
+import { contentForRun } from '../src/content/catalog.js';
 import * as engine from '../src/engine.js';
 import { createStorage } from '../src/storage.js';
 import { MemoryIndexedDB } from './helpers/memory-indexeddb.js';
@@ -20,7 +21,7 @@ async function harness() {
   let snapshot=engine.createRun(content);
   let saved=await storage.commitAuto(snapshot,{expectedRevision:await storage.getRevision()});
   const noDom={addEventListener(){},querySelector(){return noDom;},querySelectorAll(){return []}};
-  const context=vm.createContext({content,...engine,createStorage:()=>storage,structuredClone,document:noDom,window:{scrollTo(){}},CSS:{escape:s=>s},setTimeout:()=>0,clearTimeout(){},console});
+  const context=vm.createContext({content,defaultContent:content,contentForRun,...engine,createStorage:()=>storage,structuredClone,document:noDom,window:{scrollTo(){}},CSS:{escape:s=>s},setTimeout:()=>0,clearTimeout(){},console});
   new vm.Script(source+`
     render=()=>{};
     globalThis.appHarness={

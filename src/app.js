@@ -1,9 +1,10 @@
-import { content } from './content/fixture.js';
+import { defaultContent, contentForRun } from './content/catalog.js';
 import { createRun, transition, getCurrentText, getAvailableConversations, getAvailableChoices,
   isLegalParty, getOpponentParty, getCrisisAssignments, getTotalScore, getTheoRemaining,
   canUseTheo, canManualSave, validateRun } from './engine.js';
 import { createStorage } from './storage.js';
 
+let content = defaultContent;
 const app = document.querySelector('#app');
 const roles = { melee:'近接', ranged:'遠隔', healer:'回復' };
 const sourceLabels = { local:'現地の事実', commander:'指揮官の気づき', companion:'同行者の情報', theo:'テオの情報' };
@@ -14,7 +15,7 @@ const sortedCharacters = () => values(content.characters).sort((a,b) => a.displa
 const nameOf = id => content.characters[id]?.name || content.commanders[id]?.name || ({'support.theo':'テオ','support.chancellor':'宰相'}[id]) || '記録';
 const regionName = id => content.regions[id]?.name || '王都出発前';
 const character = id => content.characters[id];
-const storage = createStorage({ validateRun:run => validateRun(run, content) });
+const storage = createStorage({ validateRun:run => validateRun(run, contentForRun(run)) });
 let run = null;
 let reader = { schemaVersion:1, readTextKeys:[] };
 let slots = { auto:null, manual1:null, manual2:null, manual3:null };
@@ -26,6 +27,7 @@ let busy = false;
 let error = '';
 let pending = null;
 let modal = null;
+let renderedModal = null;
 let toast = '';
 let toastTimer;
 
@@ -33,8 +35,34 @@ function button(label, action, extra='', kind='') {
   return `<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${label}</button>`;
 }
 function fixtureNote() {
-  return '<div class="fixture-note"><strong>アルバまでの試作</strong>本文・選択肢・配点は機能確認用の仮データです。正式な物語・評価ではありません。</div>';
+  return `<div class="fixture-note"><strong>${content.contentStatus === 'partial' ? 'アルバ章・検収版' : '旧版の仮データ周回'}</strong>${esc(content.fixtureNotice)}</div>`;
 }
+
+function introductionLinks() {
+  return content.regions.alba.trialIds.map((id,i)=>button(`${i<2?`小試練${i+1}`:'大試練'}の導入を読む`,'introduction',`data-id="${id}"`,'compact')).join('');
+}
+function introductionBlocks(sceneId) {
+  const scene=content.scenes[sceneId];
+  if(scene?.contentStatus!=='reviewPending') return [];
+  return scene.blocks.map((_,blockIndex)=>getCurrentText({...run,position:{phase:'trial',sceneId,blockIndex}},content)).filter(Boolean);
+}
+function introductionText(sceneId) {
+  const paragraphs=introductionBlocks(sceneId).flatMap(block=>block.text.split('\n\n'));
+  return `<article class="novel-text" aria-label="小説本文">${paragraphs.map(paragraph=>`<p>${esc(paragraph)}</p>`).join('')}</article>`;
+}
+function introductionPanel() {
+  const blocks=introductionBlocks(run.position.sceneId);
+  const allRead=blocks.every(block=>reader.readTextKeys.includes(block.readKey));
+  const someRead=blocks.some(block=>reader.readTextKeys.includes(block.readKey));
+  const remainingRead=blocks.slice(run.position.blockIndex).every(block=>reader.readTextKeys.includes(block.readKey));
+  return `<section class="dialogue-panel"><p class="small muted">導入小説 · 10月16日版</p>${introductionText(run.position.sceneId)}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('読了して進む →','ack-introduction','','primary')}</div></div></section>`;
+}
+function introductionModal(trialId) {
+  const scene=content.scenes[content.trials[trialId]?.introductionSceneId];
+  if(!scene) return null;
+  return {title:scene.title,body:`<p class="small muted">10月16日版の導入小説<br>閲覧のみ。進行・得点・情報・既読は変更しません。</p>${introductionText(scene.id)}`,footer:button('閉じる','close-modal')};
+}
+
 function portrait(person, cls='') {
   return `<div class="portrait ${cls}" aria-label="${esc(person.name)}の仮画像枠"><span aria-hidden="true">${esc(person.name.slice(0,1))}</span><small>肖像 準備中</small></div>`;
 }
@@ -79,12 +107,12 @@ function roleCounts() {
 }
 function draftPage() {
   const counts=roleCounts();
-  return `<main class="page">${stepStrip(1)}${pageHeading('固定パーティの選抜','四人の同行者を選ぶ','カードをタップして人物を知り、詳細の「選ぶ」で編成します。枠が埋まったら、先に選んだ人物を外してください。')}<div class="draft-toolbar"><div class="role-counts">${Object.entries(roles).map(([id,label])=>`<span>${label}<b>${counts[id]} / ${id==='melee'?2:1}</b></span>`).join('')}</div>${button('両陣営を確認 →','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}のプロフィール${run.partyIds.includes(c.id)?'・選択済み':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><span class="role">${roles[c.role]} / ${c.age}歳</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">同行</span>':''}</div></button>`).join('')}</div><p class="small muted" style="margin-top:22px">選ばれなかった四人は、もう一方の指揮官と旅立ちます。出発後は同行者を変更できません。</p></main>`;
+  return `<main class="page">${stepStrip(1)}${pageHeading('固定パーティの選抜','四人の同行者を選ぶ','カードをタップして人物を知り、詳細の「選ぶ」で編成します。枠が埋まったら、先に選んだ人物を外してください。')}<div class="draft-toolbar"><div class="role-counts">${content.partySelection === 'free' ? `<span>同行者<b>${run.partyIds.length} / 4</b></span><span>8人から自由に選択</span>` : Object.entries(roles).map(([id,label])=>`<span>${label}<b>${counts[id]} / ${id==='melee'?2:1}</b></span>`).join('')}</div>${button('両陣営を確認 →','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}のプロフィール${run.partyIds.includes(c.id)?'・選択済み':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><span class="role">${roles[c.role]} / ${c.age}歳</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">同行</span>':''}</div></button>`).join('')}</div><p class="small muted" style="margin-top:22px">選ばれなかった四人は、もう一方の指揮官と旅立ちます。出発後は同行者を変更できません。</p></main>`;
 }
 function campPage() {
   const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
   const camp=(label,leader,members)=>`<section class="panel"><p class="eyebrow">${label}</p><h2>${esc(leader.name)}</h2>${members.map(c=>`<div class="member-row">${member(c)}<span class="small muted">${roles[c.role]}</span></div>`).join('')}</section>`;
-  return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認','それぞれ近接二人、遠隔一人、回復一人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
+  return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認',content.partySelection === 'free' ? '選んだ四人と、残り四人がそれぞれの陣営になります。同行者はこの周回で固定です。' : 'それぞれ近接二人、遠隔一人、回復一人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
 }
 function mapArt() {
   return `<svg class="map-art" viewBox="0 0 700 550" preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="map-grid" width="35" height="35" patternUnits="userSpaceOnUse"><path d="M35 0H0V35" fill="none" stroke="#94a58a" stroke-opacity=".13"/></pattern></defs><rect width="700" height="550" fill="url(#map-grid)"/><path d="M-20 290Q80 175 169 229T320 263T470 365T730 342" fill="none" stroke="#b6c9be" stroke-width="24"/><path d="M-20 290Q80 175 169 229T320 263T470 365T730 342" fill="none" stroke="#ccd9c9" stroke-width="10"/><ellipse cx="350" cy="246" rx="124" ry="102" stroke="#9da888" fill="#dbe0ce88"/><ellipse cx="350" cy="246" rx="133" ry="111" stroke="#9da888" stroke-dasharray="3 7" fill="none"/><path d="M174 126 310 214M537 130 385 210M359 361 360 246M158 454 334 357" stroke="#b0ab8b" stroke-width="2" stroke-dasharray="5 7"/><g fill="none" stroke="#a4b295" stroke-width="1.5" opacity=".65"><path d="m34 377 15-24 15 24m-26-9h22m13 26 15-24 15 24m-26-9h22m-63 21 15-24 15 24m-26-9h22M592 402l15-24 15 24m-26-9h22m4 37 15-24 15 24m-26-9h22M26 92l33-45 33 45 23-31 29 41M554 492l32-45 32 45 23-31 28 41"/></g><path d="M30 30h45M30 30v45m640-45h-45m45 0v45M30 520h45m-45 0v-45m640 45h-45m45 0v-45" stroke="#9da888"/></svg>`;
@@ -100,14 +128,14 @@ function mapPage() {
     const sub=!r.implemented?'準備中':status==='completed'?'完了 · 記録を開く':status==='active'?'攻略中 · 続きへ':'未訪問 · 試練を開始';
     return `<button type="button" class="map-place ${available&&status!=='completed'?'ready':''} ${status==='completed'?'complete':''}" data-region="${r.id}" data-action="${status==='completed'?'record':'region'}" data-id="${r.id}" ${!available?'disabled':''}><strong>${esc(r.name)}</strong><small>${sub}</small></button>`;
   }).join('');
-  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${albaDone?'<div class="notice"><strong>アルバの三つの試練が終了しました。</strong><br>今回の試作はここまでです。アルバの記録確認と、セーブ・ロードを続けて試せます。王位の判定は行いません。</div>':''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<span class="map-caption">バウムガルテン王国</span><div class="map-compass">N<span>✧</span></div>${regionButtons}<span class="map-legend">位置は画面配置用の仮レイアウト</span></section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点 · 仮配点</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
+  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${albaDone?'<div class="notice"><strong>アルバの三つの試練が終了しました。</strong><br>今回の試作はここまでです。アルバの記録確認と、セーブ・ロードを続けて試せます。王位の判定は行いません。</div>':''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<span class="map-caption">バウムガルテン王国</span><div class="map-compass">N<span>✧</span></div>${regionButtons}<span class="map-legend">位置は画面配置用の仮レイアウト</span></section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
 }
 function conversationButtons() {
   return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}"><span class="member-avatar" aria-hidden="true">${esc(nameOf(c.participantIds[0]).slice(0,1))}</span><span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');
 }
 function trialSidebar() {
   const decision=run.position.phase==='trial'&&run.position.stage==='decision';
-  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}</div></section><section class="panel"><h3>テオの調査</h3><p class="small muted">残り ${getTheoRemaining(run)} / 2 回<br>各地域の大試練で一度だけ。</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
+  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div></section><section class="panel"><h3>テオの調査</h3><p class="small muted">残り ${getTheoRemaining(run)} / 2 回<br>各地域の大試練で一度だけ。</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
 }
 function dialoguePanel(block) {
   const read=reader.readTextKeys.includes(block.readKey);
@@ -130,12 +158,18 @@ function trialPage() {
   const heading=p.phase==='theoReport'?'テオの調査報告':p.phase==='conversation'?'同行者の声':p.phase==='chapterClosing'?'アルバからの帰還':trial?.title || '王都からの旅立ち';
   let body='';
   if(p.phase==='trialResult') {
-    body+=`<div class="result-score"><div class="number">${result.awardedPoints}<small> / ${trial.maxPoints}</small></div><div><p>今回の継承点 <span class="small muted">（仮配点）</span></p><p class="small muted">旅の合計 ${getTotalScore(run)} / 100 · 確定済み</p></div></div>`;
+    body+=`<div class="result-score"><div class="number">${result.awardedPoints}<small> / ${trial.maxPoints}</small></div><div><p>今回の継承点 <span class="small muted">${content.contentStatus === 'fixture' ? '（仮配点）' : '（正式配点）'}</span></p><p class="small muted">旅の合計 ${getTotalScore(run)} / 100 · 確定済み</p></div></div>`;
   }
-  if(block) body+=dialoguePanel(block);
+  if(content.scenes[p.sceneId]?.contentStatus==='reviewPending') body+=introductionPanel();
+  else if(block) body+=dialoguePanel(block);
   else if(p.phase==='trial'&&p.stage==='decision') body+=choicesPanel();
   else if(p.phase==='trialResult'&&p.stage==='done') {
     body+=`<section class="panel"><h2>判断を記録しました</h2><p class="small muted">評価の再表示で得点が増えることはありません。この区切りでセーブするか、次へ進めます。</p>${trial.interaction==='crisisPlan'?assignments(trial.choices.find(c=>c.id===result.choiceId)):''}<div class="button-row" style="margin-top:24px">${button(trial.kind==='major'?'帰還の会話へ →':'次の試練へ →','next-trial','','primary')}${button('セーブ / ロード','saves')}</div></section>`;
+  }
+  if (p.phase==='trialResult') {
+    const selected=trial.choices.find(c=>c.id===result.choiceId);
+    if(selected.feedbackPending) body+='<div class="notice" data-feedback-pending>この選択の反応本文・評価理由は正式原稿待ちです。選択と正式配点のみ記録しています。</div>';
+    if(selected.evaluationReason) body+=`<section class="panel"><h3>評価理由</h3><p class="memo-text">${esc(selected.evaluationReason)}</p></section>`;
   }
   const canReturn=(p.phase==='trial'&&p.stage==='decision')||(p.phase==='trialResult'&&p.stage==='done');
   return `<main class="page">${pageHeading(regionId?`${esc(regionName(regionId))} / 試練の記録`:'旅のはじまり',esc(heading),'',canReturn?button('地図へ一時帰還','return-map','', 'compact'):'')}${trial?`<div class="chapter-path">${content.regions[trial.regionId].trialIds.map((id,i)=>`<span class="${id===trial.id?'active':''}">${i<2?`小試練 ${i+1}`:'大試練'}</span>`).join('')}</div>`:''}<div class="trial-layout"><div class="trial-main">${body}<div style="margin-top:20px">${fixtureNote()}</div></div>${trialSidebar()}</div></main>`;
@@ -147,8 +181,8 @@ function storyPage() {
 function profileModal(id) {
   const c=character(id), selected=run?.partyIds.includes(id);
   const choosing=!title&&run?.position.phase==='draft';
-  const full=choosing&&roleCounts()[c.role]>=(c.role==='melee'?2:1)&&!selected;
-  return { title:c.name, body:`<div class="profile-layout">${portrait(c)}<div><p class="eyebrow">${roles[c.role]} / ${c.age}歳 / ${esc(c.gender)}</p><dl class="profile-meta"><dt>出身</dt><dd>${esc(regionName(c.originRegionId))}</dd><dt>活動地域</dt><dd>${esc(c.activityRegionIds.map(regionName).join('・'))}</dd><dt>得意分野</dt><dd>${esc(c.expertise.join('・'))}</dd></dl></div></div><p class="profile-text">${esc(c.profile)}</p><h3 class="section-label">主な関係性</h3><p class="small">${esc(c.relationships.join(' / '))}</p>${full?'<div class="notice">この役割の枠は埋まっています。先に選択済みの人物を外してください。</div>':''}`, footer:choosing?button(selected?'同行者から外す':'同行者に選ぶ','toggle-party',`data-id="${id}" ${full?'disabled':''}`,selected?'':'primary'):button('閉じる','close-modal') };
+  const full=choosing&&!selected&&(content.partySelection === 'free' ? run.partyIds.length >= 4 : roleCounts()[c.role]>=(c.role==='melee'?2:1));
+  return { title:c.name, body:`<div class="profile-layout">${portrait(c)}<div><p class="eyebrow">${roles[c.role]} / ${c.age}歳 / ${esc(c.gender)}</p><dl class="profile-meta"><dt>出身</dt><dd>${esc(regionName(c.originRegionId))}</dd><dt>活動地域</dt><dd>${esc(c.activityRegionIds.map(regionName).join('・'))}</dd><dt>得意分野</dt><dd>${esc(c.expertise.join('・'))}</dd></dl></div></div><p class="profile-text">${esc(c.profile)}</p><h3 class="section-label">主な関係性</h3><p class="small">${esc(c.relationships.join(' / '))}</p>${full?'<div class="notice">同行者の枠は埋まっています。先に選択済みの人物を外してください。</div>':''}`, footer:choosing?button(selected?'同行者から外す':'同行者に選ぶ','toggle-party',`data-id="${id}" ${full?'disabled':''}`,selected?'':'primary'):button('閉じる','close-modal') };
 }
 function memoBody(regionId) {
   const acquired=Object.keys(run?.acquiredInformation || {}).map(id=>content.information[id]).filter(i=>i&&(!regionId||i.regionId===regionId));
@@ -162,7 +196,7 @@ function memoBody(regionId) {
         const block=content.textBlocks[s.id];
         return convo?convo.participantIds.map(nameOf).join('・'):s.kind==='investigation'?'テオ':block?.speakerId?nameOf(block.speakerId):i.sourceActorId?nameOf(i.sourceActorId):'現地';
       });
-      return `<article class="info-item">${esc(i.summary)}<small>出典：${esc([...new Set(sourceNames.length?sourceNames:[i.sourceActorId?nameOf(i.sourceActorId):'現地の確認'])].join(' / '))} · ${esc(regionName(i.regionId))}</small></article>`;
+      return `<article class="info-item">${i.title?`<strong>${esc(i.title)}</strong><br>`:''}<div class="memo-text">${esc(i.summary)}</div><small>出典：${esc([...new Set(sourceNames.length?sourceNames:[i.sourceActorId?nameOf(i.sourceActorId):'現地の確認'])].join(' / '))} · ${esc(regionName(i.regionId))}</small></article>`;
     }).join('')}</section>`:'';
   }).join('');
 }
@@ -182,9 +216,9 @@ function logModal() {
 function slotSummary(slot) {
   if(!slot) return '<p class="muted">空のスロット</p>';
   try {
-    validateRun(slot.run,content);
+    validateRun(slot.run,contentForRun(slot.run));
     const state=slot.run;
-    return `<p>${esc(nameOf(state.commanderId))} / ${esc(positionLabel(state))}</p><p class="muted">同行者：${state.partyIds.length?esc(state.partyIds.map(nameOf).join('・')):'選抜前'}</p><p class="muted">継承点 ${getTotalScore(state)} / 100　·　テオ ${getTheoRemaining(state)} / 2 回</p>`;
+    return `<p class="small muted">${state.contentVersion === defaultContent.contentVersion ? '正式配点の検収版' : '旧版の仮データ周回・得点を保持'}</p><p>${esc(nameOf(state.commanderId))} / ${esc(positionLabel(state))}</p><p class="muted">同行者：${state.partyIds.length?esc(state.partyIds.map(nameOf).join('・')):'選抜前'}</p><p class="muted">継承点 ${getTotalScore(state)} / 100　·　テオ ${getTheoRemaining(state)} / 2 回</p>`;
   } catch { return '<p class="muted">この保存データは確認が必要です。ロード時に検証します。</p>'; }
 }
 function savesModal() {
@@ -198,6 +232,7 @@ function modalMarkup() {
 function render() {
   const active=document.activeElement;
   const focusData=active?.dataset?.action?{action:active.dataset.action,id:active.dataset.id}:null;
+  const modalScrollTop=modal && modal===renderedModal ? app.querySelector('[role="dialog"]')?.scrollTop || 0 : 0;
   let body='';
   if(title||!run) body=titlePage();
   else {
@@ -215,11 +250,13 @@ function render() {
   if(modal) {
     app.querySelectorAll(':scope > :not(.modal-backdrop):not(.toast):not(.busy-corner)').forEach(el=>el.inert=true);
     const dialog=app.querySelector('[role="dialog"]');
+    dialog.scrollTop=modalScrollTop;
     const selector=focusData?`[data-action="${CSS.escape(focusData.action)}"]${focusData.id?`[data-id="${CSS.escape(focusData.id)}"]`:''}`:'';
     (selector&&dialog.querySelector(selector) || dialog.querySelector('button:not(:disabled)'))?.focus({preventScroll:true});
   } else if(focusData) {
     app.querySelector(`[data-action="${CSS.escape(focusData.action)}"]${focusData.id?`[data-id="${CSS.escape(focusData.id)}"]`:''}`)?.focus({preventScroll:true});
   }
+  renderedModal=modal;
 }
 function confirmDialog(heading,body,onConfirm,label='確定する') {
   const previous=modal;
@@ -261,20 +298,32 @@ async function transact(work, {after,message}={}) {
 async function perform(action) {
   if(busy||pending) return;
   const oldPhase=run.position.phase;
+  const oldScene=run.position.sceneId;
   const block=action.type==='ACK_TEXT'?getCurrentText(run,content):null;
+  const blocks=action.type==='ACK_INTRODUCTION'
+    ? introductionBlocks(oldScene).slice(run.position.blockIndex) : block?[block]:[];
   let next;
-  try { next=transition(run,action,content); }
+  try {
+    if(action.type==='ACK_INTRODUCTION') {
+      if(run.position.phase!=='trial' || run.position.stage!=='intro' || !blocks.length) return;
+      next=run;
+      for(const entry of blocks) {
+        if(getCurrentText(next,content)?.id!==entry.id) throw new Error('導入の読了位置が一致しません。');
+        next=transition(next,{type:'ACK_TEXT'},content);
+      }
+    } else next=transition(run,action,content);
+  }
   catch(e) { notify(e.message); render(); return; }
   run=next;
   const expectedRevision=revision;
-  await transact(()=>storage.commitAuto(next,{expectedRevision,readTextKeys:block?[block.readKey]:[]}));
-  if(oldPhase!==run.position.phase) window.scrollTo({top:0,behavior:'instant'});
+  await transact(()=>storage.commitAuto(next,{expectedRevision,readTextKeys:blocks.map(entry=>entry.readKey)}));
+  if(oldPhase!==run.position.phase || oldScene!==run.position.sceneId) window.scrollTo({top:0,behavior:'instant'});
 }
 async function load(id) {
   modal=null;
   const expectedRevision=slotsRevision;
   await transact(()=>storage.loadSlot(id,{expectedRevision}),
-    {after:result=>{run=result.run;title=false;},message:'保存した地点から再開しました。'});
+    {after:result=>{content=contentForRun(result.run);run=result.run;title=false;},message:'保存した地点から再開しました。'});
 }
 async function openSaves() {
   try { await refreshSlots(); modal=savesModal(); render(); }
@@ -282,13 +331,18 @@ async function openSaves() {
 }
 async function startNew() {
   modal=null;
-  const next=createRun(content);
+  const next=createRun(defaultContent);
   const expectedRevision=slotsRevision;
   await transact(()=>storage.commitAuto(next,{expectedRevision}),
-    {after:()=>{run=next;title=false;},message:'新しい旅を記録しました。'});
+    {after:()=>{content=defaultContent;run=next;title=false;},message:'新しい旅を記録しました。'});
 }
 async function skipRead() {
   if(busy||pending) return;
+  const introduction=introductionBlocks(run.position.sceneId).slice(run.position.blockIndex);
+  if(introduction.length) {
+    if(introduction.every(block=>reader.readTextKeys.includes(block.readKey))) await perform({type:'ACK_INTRODUCTION'});
+    return;
+  }
   const initialPhase=run.position.phase;
   let skipped=0;
   while(!pending && run.position.phase===initialPhase) {
@@ -304,6 +358,8 @@ async function handle(action,id) {
   if(busy) return;
   if(pending&&!['saves','load-slot','accept-confirm','cancel-confirm','close-modal','retry','memo','log','profile'].includes(action)) return;
   switch(action) {
+    case 'introduction': modal=introductionModal(id); render(); break;
+    case 'ack-introduction': await perform({type:'ACK_INTRODUCTION'}); break;
     case 'new':
       await refreshSlots();
       if(slots.auto) confirmDialog('新しい旅をはじめる','<p>現在のオートセーブを、新しい周回で置き換えます。</p><p class="small muted">手動セーブ三枠、周回をまたぐ既読、王国史は保持されます。</p>',startNew,'新しい旅をはじめる');

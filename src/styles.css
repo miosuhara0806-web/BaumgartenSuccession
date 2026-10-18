@@ -121,3 +121,28 @@
   .title-menu .button { min-height: 56px; padding: 14px 17px; }
   .title-art { display: none; }
 }
+
+/* Preserved from the 2026-10-16 continuous novel presentation. */
+.novel-text {
+  color: #172b25;
+  /* Reserve room for Japanese line-end punctuation inside the text frame. */
+  padding-inline: .5em;
+  font-family: var(--serif);
+  font-size: 1.08rem;
+  line-height: 2.15;
+  letter-spacing: .03em;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  line-break: strict;
+}
+.novel-text p { margin: 0 0 1.5em; }
+.novel-text p:last-child { margin-bottom: 0; }
+@media (max-width: 760px) {
+  .novel-text { font-size: 1rem; }
+  .dialogue-actions { flex-wrap: wrap; }
+}
+.memo-text { white-space: pre-line; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .opinion-list { grid-template-columns: 1fr; }
+  .bubble-icon { white-space: nowrap; flex-shrink: 0; }
+}
