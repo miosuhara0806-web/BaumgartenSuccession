@@ -209,14 +209,14 @@ function memoBody(regionId) {
   if(!acquired.length) return '<p class="empty">この周回では、まだ情報を取得していません。</p>';
   return Object.entries(sourceLabels).map(([kind,label])=>{
     const items=acquired.filter(i=>i.sourceKind===kind);
-    return items.length?`<section class="info-group"><h3>${label}</h3>${items.map(i=>{
+    return items.length?`<section class="info-group"><h3>${esc(content.informationSourceLabels?.[kind] || label)}</h3>${items.map(i=>{
       const sources=run.acquiredInformation[i.id].sources || [];
       const sourceNames=sources.map(s=>{
         const convo=content.conversations[s.id];
         const block=content.textBlocks[s.id];
         return convo?convo.participantIds.map(nameOf).join('・'):s.kind==='investigation'?'テオ':block?.speakerId?nameOf(block.speakerId):i.sourceActorId?nameOf(i.sourceActorId):'現地';
       });
-      return `<article class="info-item">${i.title?`<strong>${esc(i.title)}</strong><br>`:''}<div class="memo-text">${esc(i.summary)}</div><small>出典：${esc([...new Set(sourceNames.length?sourceNames:[i.sourceActorId?nameOf(i.sourceActorId):'現地の確認'])].join(' / '))} · ${esc(regionName(i.regionId))}</small></article>`;
+      return `<article class="info-item">${i.title?`<strong>${esc(i.title)}</strong><br>`:''}<div class="memo-text">${esc(i.summary)}</div><small>出典：${esc(i.sourceLabel || [...new Set(sourceNames.length?sourceNames:[i.sourceActorId?nameOf(i.sourceActorId):'現地の確認'])].join(' / '))} · ${esc(regionName(i.regionId))}</small></article>`;
     }).join('')}</section>`:'';
   }).join('');
 }
@@ -252,7 +252,8 @@ function slotSummary(slot) {
   try {
     validateRun(slot.run,contentForRun(slot.run));
     const state=slot.run;
-    return `<p class="small muted">${state.contentVersion === defaultContent.contentVersion ? '正式配点の検収版' : '旧版の仮データ周回・得点を保持'}</p><p>${esc(nameOf(state.commanderId))} / ${esc(positionLabel(state))}</p><p class="muted">同行者：${state.partyIds.length?esc(state.partyIds.map(nameOf).join('・')):'選抜前'}</p><p class="muted">継承点 ${getTotalScore(state)} / 100　·　テオ ${getTheoRemaining(state)} / 2 回</p>`;
+    const edition=state.contentVersion===defaultContent.contentVersion ? 'アルバ正式原稿の検収版' : contentForRun(state).enforceChoiceScores ? '前回検収版・正式配点を保持' : '旧版の仮データ周回・得点を保持';
+    return `<p class="small muted">${edition}</p><p>${esc(nameOf(state.commanderId))} / ${esc(positionLabel(state))}</p><p class="muted">同行者：${state.partyIds.length?esc(state.partyIds.map(nameOf).join('・')):'選抜前'}</p><p class="muted">継承点 ${getTotalScore(state)} / 100　·　テオ ${getTheoRemaining(state)} / 2 回</p>`;
   } catch { return '<p class="muted">この保存データは確認が必要です。ロード時に検証します。</p>'; }
 }
 function savesModal() {

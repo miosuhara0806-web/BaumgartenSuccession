@@ -4,14 +4,19 @@ from pathlib import Path
 import re, base64, mimetypes, zipfile, json, hashlib, argparse
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--edition', choices=['chapter', 'conversation'], default='chapter')
-conversation_edition = parser.parse_args().edition == 'conversation'
-stem = 'BaumgartenSuccession_AlbaConversationPreview_20261018' if conversation_edition else 'BaumgartenSuccession_AlbaAcceptance_20261018'
-db_name = 'baumgarten-succession-alba-conversation-review-20261018' if conversation_edition else 'baumgarten-succession-alba-approved-review-20261018'
-port = 4180 if conversation_edition else 4178
+parser.add_argument('--edition', choices=['chapter', 'conversation', 'final'], default='chapter')
+edition = parser.parse_args().edition
+conversation_edition = edition == 'conversation'
+final_edition = edition == 'final'
+settings = {
+    'chapter': ('BaumgartenSuccession_AlbaAcceptance_20261018', 'alba-20261018', 'baumgarten-succession-alba-approved-review-20261018', 4178, 'alba-implementation-20261018.md'),
+    'conversation': ('BaumgartenSuccession_AlbaConversationPreview_20261018', 'alba-conversation-20261018', 'baumgarten-succession-alba-conversation-review-20261018', 4180, 'alba-conversation-display-20261018.md'),
+    'final': ('BaumgartenSuccession_AlbaFinalPreview_20261018', 'alba-final-20261018', 'baumgarten-succession-alba-final-review-20261018', 4184, 'alba-final-implementation-20261018.md'),
+}
+stem, directory, db_name, port, report = settings[edition]
 
 root = Path(__file__).resolve().parents[1]
-out = root.parent / 'preview' / ('alba-conversation-20261018' if conversation_edition else 'alba-20261018')
+out = root.parent / 'preview' / directory
 out.mkdir(parents=True, exist_ok=True)
 
 def data_url(path):
@@ -23,6 +28,8 @@ module_files = [
     ('fixture', 'src/content/fixture.js'),
     ('legacy', 'src/content/legacy.js'),
     ('alba', 'src/content/alba.js'),
+    ('finalManuscript', 'src/content/alba-final-manuscript.js'),
+    ('albaFinal', 'src/content/alba-final.js'),
     ('catalog', 'src/content/catalog.js'),
     ('engine', 'src/engine.js'),
     ('storage', 'src/storage.js'),
@@ -114,8 +121,33 @@ http://127.0.0.1:4180/ を開いてください。停止はCtrl+C。
 実スマートフォン・Safariは未検証です。
 GitHubプッシュ・main反映・Pages公開は行っていません。
 """
+if final_edition:
+    instructions = """アルバ3試練・正式原稿検収版（2026-10-18）
+ZIPをすべて展開し、中のHTMLをChromeまたはEdgeで開いてください。
+10月16日版・以前の各検収版は残してください。この版は別名・専用の別DBで保存します。
+以前の版のセーブは自動で取り込みません。通常のゲームの保存形式や内容版の互換処理は維持しています。
+
+「はじめから」→主人公→任意4人→出発→アルバ。
+通常9択の正式反応・評価理由を実装しました。
+A→C→Bで20点、B→A→Aで13点。リゼットDの点数は4点のままです。
+同行者の会話は1人1画面・外側の括弧なし。「確認して戻る」で固有メモを取得します。
+会話を開いただけでは取得しません。分類「同行者の見解」と出典を確認してください。
+リゼット小②の確認完了でDを開放します。会話前の手動セーブに戻ると、メモとDも未取得に戻ります。
+
+大試練の政策提出前にテオを依頼できます。正式な調査報告とメモを確認してください。
+同じ都市で1回、1周2回のままです。調査で加点や追加選択肢の開放はありません。
+タグは大試練のみ、点数とは別の隠し集計です。
+ハロルド・フレデリカ・リゼット・サンドロ同行で会話10件を聞き、テオを依頼すると、完了時のメモは共通12＋同行者10＋テオ1＝23件です。
+同行者やテオを使わなくても通常の選択肢で満点を取れます。
+
+導入小説3本・縦スクロール・通常の保存処理は維持しています。
+序章・出発・帰還の正式台本、他都市、エンディング、画像・地図は今回の完成対象外です。
+
+HTMLを開けない場合、Node.js導入済みPCで node start-preview.cjs を実行し、
+http://127.0.0.1:4184/ を開いてください。停止はCtrl+C。
+実スマートフォン・Safariは未検証です。GitHub・PR・main・Pagesには反映していません。
+"""
 (out / '確認方法.txt').write_text(instructions)
-report = 'alba-conversation-display-20261018.md' if conversation_edition else 'alba-implementation-20261018.md'
 (out / '実装報告.md').write_text((root / 'docs' / report).read_text())
 files = [file, out/'start-preview.cjs', out/'確認方法.txt', out/'実装報告.md']
 (out / 'SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name for p in files)+'\n')

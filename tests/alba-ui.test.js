@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { defaultContent, contentForRun } from '../src/content/catalog.js';
+import { contentForRun } from '../src/content/catalog.js';
+// Retain the previous acceptance pack's regression coverage, including its pending reactions.
+import { content as defaultContent } from '../src/content/alba.js';
 import { content as legacy } from '../src/content/legacy.js';
 import * as engine from '../src/engine.js';
 import { createStorage } from '../src/storage.js';

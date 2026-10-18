@@ -1,5 +1,11 @@
 # バウムガルテン王国の継承戦 — アルバ基盤試作
 
+## アルバ3試練の正式原稿検収版（2026-10-18）
+
+通常9択の反応・評価理由、同行者固有メモ10件、テオの正式報告とメモ、大試練の統治傾向タグを反映しました。最新版は `python scripts/package-alba-preview.py --edition final` で別名のZIPを生成します。[実装報告・保存互換・検収手順](docs/alba-final-implementation-20261018.md)を参照してください。
+
+以下は以前の各検収版・旧fixtureの記録です。旧セーブでは当時の内容を保持し、新規周回には最新の正式原稿を使います。
+
 同行者会話の表示改善版は `python scripts/package-alba-preview.py --edition conversation` で別名の検収ZIPを生成します。[修正内容と検証結果](docs/alba-conversation-display-20261018.md)を参照してください。台詞・保存形式と導入小説の表示は維持しています。
 
 ## 2026-10-18 アルバ章・正式データ検収版
