@@ -52,7 +52,7 @@ async function harness(snapshot){
 }
 
 test('all nine reactions and reasons match the supplied manuscript verbatim; only the three major policies have tags',()=>{
-  assert.equal(defaultContent,content);assert.equal(reactions.length,9);
+  assert.equal(contentForRun(engine.createRun(content)),content);assert.equal(reactions.length,9);
   for(const row of reactions){
     const trial=content.trials[row.trialId],choice=trial.choices.find(c=>c.id===`choice.${row.trialId}.${row.letter}`);
     assert.equal(choice.points,row.points);
