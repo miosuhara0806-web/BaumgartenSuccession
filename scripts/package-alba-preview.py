@@ -51,6 +51,20 @@ modules = []
 for name, file in module_files:
     path = root / file
     code = path.read_text()
+    if name == 'catalog':
+        # Earlier acceptance editions stay pinned to Alba even as the main catalog grows.
+        # Keep their original content versions and preview scope reproducible.
+        code = """import { content as current } from './alba-final.js';
+import { content as previous } from './alba.js';
+import { content as legacy } from './legacy.js';
+export const defaultContent = current;
+export function contentForRun(run) {
+  if (run?.contentVersion === legacy.contentVersion) return legacy;
+  if (run?.contentVersion === current.contentVersion) return current;
+  if (run?.contentVersion === previous.contentVersion) return previous;
+  throw new Error('この内容版の保存には対応していません。既存の保存は保持しています。');
+}
+"""
     exports = re.findall(r'^export (?:async )?(?:const|function|class) (\w+)', code, re.M)
     code = replace_imports(code, path)
     code = re.sub(r'^export ', '', code, flags=re.M)
