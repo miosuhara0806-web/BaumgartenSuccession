@@ -119,7 +119,7 @@ function draftPage() {
 }
 function campPage() {
   const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
-  const camp=(label,leader,members)=>`<section class="panel"><p class="eyebrow">${label}</p><h2>${esc(leader.name)}</h2>${members.map(c=>`<div class="member-row">${member(c)}<span class="small muted">${roles[c.role]}</span></div>`).join('')}</section>`;
+  const camp=(label,leader,members)=>`<section class="panel"><p class="eyebrow">${label}</p><h2>${esc(leader.name)}</h2>${members.map(c=>`<div class="member-row">${member(c)}</div>`).join('')}</section>`;
   return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認',content.partySelection === 'free' ? '選んだ四人と、残り四人がそれぞれの陣営になります。同行者はこの周回で固定です。' : 'それぞれ近接二人、遠隔一人、回復一人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
 }
 function mapArt() {
