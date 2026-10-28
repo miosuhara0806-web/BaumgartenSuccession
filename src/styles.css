@@ -150,6 +150,9 @@
 }
 .conversation-text p { margin: 0 0 1.25em; }
 .conversation-text p:last-child { margin-bottom: 0; }
+.conversation-title { font-size: 1.1rem; line-height: 1.8; }
+.manuscript-text { line-break: strict; padding-inline: .5em; }
+.manuscript-text .narration { color: var(--muted); font-size: .95em; }
 @media (max-width: 600px) {
   .opinion-list { grid-template-columns: 1fr; }
   .bubble-icon { white-space: nowrap; flex-shrink: 0; }

@@ -9,7 +9,7 @@ import { content as hexerei } from '../src/content/hexerei.js';
 import { content as alba } from '../src/content/alba-final.js';
 import { content as previous } from '../src/content/alba.js';
 import { content as legacy } from '../src/content/legacy.js';
-import { defaultContent, contentForRun } from '../src/content/catalog.js';
+import { contentForRun } from '../src/content/catalog.js';
 import * as engine from '../src/engine.js';
 import { createStorage } from '../src/storage.js';
 import { MemoryIndexedDB } from './helpers/memory-indexeddb.js';
@@ -93,8 +93,8 @@ test('assembly requires all three complete introductions and never substitutes s
   for (const intro of introductions) assert.equal(content.textBlocks[`text.${intro.trialId}.introduction`].text, intro.text.replaceAll('【主人公】', '{commander}'));
 });
 
-test('all three introductions preserve the complete supplied novels and new runs select the new content version', () => {
-  assert.equal(defaultContent, content);
+test('all three introductions preserve the complete supplied novels and runs retain the three-city content version', () => {
+  assert.equal(contentForRun(engine.createRun(content)), content);
   const novels = [...novelSource.matchAll(/### 本文\n\n([\s\S]*?)\n\n<!-- 本文ここまで -->/g)];
   assert.equal(novels.length, 3);
   for (let i = 0; i < 3; i++) {

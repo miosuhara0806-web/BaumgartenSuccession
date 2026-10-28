@@ -163,10 +163,15 @@ function conversationBlocks(startIndex=0) {
 }
 function conversationPanel() {
   const blocks=conversationBlocks();
+  const conversation=content.conversations[run.position.conversationId];
+  const manuscript=conversation.presentation==='manuscript';
   const allRead=blocks.every(block=>reader.readTextKeys.includes(block.readKey));
   const remainingRead=conversationBlocks(run.position.blockIndex).every(block=>reader.readTextKeys.includes(block.readKey));
-  const speaker=nameOf(blocks[0].speakerId);
-  return `<section class="dialogue-panel"><div class="speaker">${esc(speaker)}</div><div class="dialogue-text conversation-text" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${blocks.map(block=>`<p>${esc(companionSpeechText(block.text))}</p>`).join('')}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
+  const speaker=nameOf(manuscript?conversation.participantIds[0]:blocks[0].speakerId);
+  const paragraphs=blocks.map(block=>manuscript
+    ? `<p class="${block.speakerId?'speech':'narration'}" aria-label="${block.speakerId?esc(nameOf(block.speakerId))+'の台詞':'地の文'}">${esc(block.text)}</p>`
+    : `<p>${esc(companionSpeechText(block.text))}</p>`).join('');
+  return `<section class="dialogue-panel"><div class="speaker">${esc(speaker)}</div>${manuscript?`<h2 class="conversation-title">${esc(conversation.title)}</h2>`:''}<div class="dialogue-text conversation-text${manuscript?' manuscript-text':''}" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${paragraphs}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
 }
 function companionSpeechText(text) {
   return text.startsWith('「') && text.endsWith('」') ? text.slice(1,-1) : text;
@@ -187,6 +192,7 @@ function trialPage() {
   const result=run.trialResults[p.trialId];
   const heading=p.phase==='theoReport'?'テオの調査報告':p.phase==='conversation'?'同行者の声':p.phase==='chapterClosing'?`${regionName(regionId)}からの帰還`:trial?.title || '王都からの旅立ち';
   let body='';
+  if(p.phase==='theoReport' && content.investigations[p.investigationId]?.title) body+=`<h2>${esc(content.investigations[p.investigationId].title)}</h2>`;
   if(p.phase==='trialResult') {
     body+=`<div class="result-score"><div class="number">${result.awardedPoints}<small> / ${trial.maxPoints}</small></div><div><p>今回の継承点 <span class="small muted">${content.contentStatus === 'fixture' ? '（仮配点）' : '（正式配点）'}</span></p><p class="small muted">旅の合計 ${getTotalScore(run)} / 100 · 確定済み</p></div></div>`;
   }
@@ -256,7 +262,13 @@ function logModal() {
       previous.entries.push(entry);previous.lastIndex=index;
     } else groups.push({conversationId:conversation?.id,sceneId:entry.sceneId,speakerId:entry.speakerId,lastIndex:index,entries:[entry]});
   }
-  return { title:'会話ログ', body:entries.length?`<p class="small muted">この周回の直近200発言。閲覧では情報の取得や採点を行いません。</p>${groups.map(group=>`<article class="log-entry"><strong>${esc(nameOf(group.speakerId))}</strong>${group.entries.map(e=>`<p>${esc(group.conversationId && content.characters[group.speakerId] ? companionSpeechText(e.text) : e.text)}</p>`).join('')}</article>`).join('')}`:'<p class="empty">まだ表示された会話はありません。</p>',footer:button('閉じる','close-modal') };
+  const markup=groups.map(group=>{
+    const manuscript=content.conversations[group.conversationId]?.presentation==='manuscript';
+    const label=manuscript&&!group.speakerId?'地の文':nameOf(group.speakerId);
+    const paragraphs=group.entries.map(e=>`<p>${esc(!manuscript && group.conversationId && content.characters[group.speakerId] ? companionSpeechText(e.text) : e.text)}</p>`).join('');
+    return `<article class="log-entry"><strong>${esc(label)}</strong>${paragraphs}</article>`;
+  }).join('');
+  return { title:'会話ログ', body:entries.length?`<p class="small muted">この周回の直近200発言。閲覧では情報の取得や採点を行いません。</p>${markup}`:'<p class="empty">まだ表示された会話はありません。</p>',footer:button('閉じる','close-modal') };
 }
 function slotSummary(slot) {
   if(!slot) return '<p class="muted">空のスロット</p>';

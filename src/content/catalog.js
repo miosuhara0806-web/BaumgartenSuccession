@@ -1,4 +1,5 @@
-import { content as current } from './anchoring.js';
+import { content as current } from './rude.js';
+import { content as anchoring } from './anchoring.js';
 import { content as hexerei } from './hexerei.js';
 import { content as albaFinal } from './alba-final.js';
 import { content as previous } from './alba.js';
@@ -10,6 +11,7 @@ export const defaultContent = current;
 export function contentForRun(run) {
   if (run?.contentVersion === legacy.contentVersion) return legacy;
   if (run?.contentVersion === current.contentVersion) return current;
+  if (run?.contentVersion === anchoring.contentVersion) return anchoring;
   if (run?.contentVersion === hexerei.contentVersion) return hexerei;
   if (run?.contentVersion === albaFinal.contentVersion) return albaFinal;
   if (run?.contentVersion === previous.contentVersion) return previous;
