@@ -10,7 +10,7 @@ import { content as hexerei } from '../src/content/hexerei.js';
 import { content as alba } from '../src/content/alba-final.js';
 import { content as previous } from '../src/content/alba.js';
 import { content as legacy } from '../src/content/legacy.js';
-import { defaultContent, contentForRun } from '../src/content/catalog.js';
+import { contentForRun } from '../src/content/catalog.js';
 import * as engine from '../src/engine.js';
 import { createStorage } from '../src/storage.js';
 import { MemoryIndexedDB } from './helpers/memory-indexeddb.js';
@@ -57,8 +57,7 @@ function sourceRows(n) { return [...originalSection(n).matchAll(/^#### ([^\n]*)\
 function stripProvenance(text) { return text.trim().split('\n\n').filter(p => !/^(出典|会話出典|メモ出典|メモ名)：/.test(p)).join('\n\n'); }
 const normalize = text => text.replaceAll('【主人公】', '{commander}');
 
-test('new runs use a separate four-city edition; all 55 prose fields match the supplied source with only the approved edits', () => {
-  assert.equal(defaultContent, content);
+test('saved Rude runs retain the four-city edition; all 55 prose fields match the supplied source with only the approved edits', () => {
   assert.equal(contentForRun(engine.createRun(content)), content);
   assert.equal(Object.values(content.information).filter(i => i.regionId === 'rude').length, 17);
   const hashes = ['eabba110fc5f09fa7f91fe9a61ca94bc97249fb77a16bd2d2fa197179bb02df7', '2673f327f4dc9421c697c487748ca839b85d5e8ec6189bb1795ff358143e82e0', '7d09e65c7d483120c71ef3725edc002329f19c72f13ab77bd37907101086887a'];
