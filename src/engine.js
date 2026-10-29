@@ -205,7 +205,7 @@ function finishBlockSequence(run, content) {
     case 'trialResult': p.stage = 'done'; return false;
     case 'chapterClosing': {
       run.chapterProgress[p.regionId] = { status: 'completed' };
-      if (content.regions[p.regionId].kind === 'final') {
+      if (content.regions[p.regionId].kind === 'final' && content.finalChapterCompletion !== 'map') {
         run.position = content.endingSceneId ? { phase: 'ending', sceneId: content.endingSceneId, blockIndex: 0 } : { phase: 'ending' };
       } else enterMap(run, content);
       return true;
@@ -589,6 +589,7 @@ export function validateRun(run, content) {
   assert(Array.isArray(run.recentDialogueLog) && run.recentDialogueLog.length <= 200, '会話ログが不正です。');
   for (const entry of run.recentDialogueLog) assert(object(entry) && content.textBlocks[entry.textId] && Number.isInteger(entry.textRevision) && entry.textRevision > 0 && string(entry.readKey) && entry.readKey.startsWith(`${entry.textId}@${entry.textRevision}`) && string(entry.text) && sceneKnown(entry.sceneId, content), '会話ログの参照が不正です。');
   if (['ending', 'completed'].includes(run.position.phase)) {
+    assert(content.finalChapterCompletion !== 'map', 'この内容版の正式終幕は未実装です。');
     assert(run.mode === 'full' && Object.keys(content.regions).length === 5 && Object.values(run.chapterProgress).every(progress => progress.status === 'completed'), '全章未完了で継承判定へ到達しています。');
   }
   if (run.endingSnapshot !== undefined) assert(object(run.endingSnapshot) && ['ending', 'completed'].includes(run.position.phase), '終幕記録が不正です。');

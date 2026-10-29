@@ -51,6 +51,28 @@ bundled = []
 for name, relative in modules:
     path = root / relative
     code = path.read_text()
+    if name == 'catalog':
+        # Freeze the four-city review edition as the default catalog advances.
+        code = """import { content as current } from './rude.js';
+import { content as anchoring } from './anchoring.js';
+import { content as hexerei } from './hexerei.js';
+import { content as albaFinal } from './alba-final.js';
+import { content as previous } from './alba.js';
+import { content as legacy } from './legacy.js';
+
+export const defaultContent = current;
+
+// Never migrate, regrade, or erase a saved run implicitly.
+export function contentForRun(run) {
+  if (run?.contentVersion === legacy.contentVersion) return legacy;
+  if (run?.contentVersion === current.contentVersion) return current;
+  if (run?.contentVersion === anchoring.contentVersion) return anchoring;
+  if (run?.contentVersion === hexerei.contentVersion) return hexerei;
+  if (run?.contentVersion === albaFinal.contentVersion) return albaFinal;
+  if (run?.contentVersion === previous.contentVersion) return previous;
+  throw new Error('この内容版の保存には対応していません。既存の保存は保持しています。');
+}
+"""
     exports = re.findall(r'^export (?:async )?(?:const|function|class) (\w+)', code, re.M)
     code = re.sub(r'^export ', '', imports(code, path), flags=re.M)
     if name == 'storage':
