@@ -11,7 +11,7 @@ import { content as hexerei } from '../src/content/hexerei.js';
 import { content as alba } from '../src/content/alba-final.js';
 import { content as previous } from '../src/content/alba.js';
 import { content as legacy } from '../src/content/legacy.js';
-import { defaultContent, contentForRun } from '../src/content/catalog.js';
+import { contentForRun } from '../src/content/catalog.js';
 import * as engine from '../src/engine.js';
 import { createStorage } from '../src/storage.js';
 import { MemoryIndexedDB } from './helpers/memory-indexeddb.js';
@@ -75,8 +75,8 @@ function sourceRows(n) { return [...originalSection(n).matchAll(/^#### ([^\n]*)\
 function stripProvenance(text) { return text.trim().split('\n\n').filter(p => !/^(出典|会話出典|メモ出典|メモ名)：/.test(p)).join('\n\n'); }
 const normalize = text => text.replaceAll('【主人公】', '{commander}');
 
-test('new runs use the five-city review edition; all 57 prose fields match the final source verbatim', () => {
-  assert.equal(defaultContent,content);
+test('historical five-city review edition resolves unchanged; all 57 prose fields match the final source verbatim', () => {
+  assert.equal(contentForRun({contentVersion: content.contentVersion}),content);
   assert.equal(contentForRun(engine.createRun(content)), content);
   assert.equal(Object.values(content.information).filter(i => i.regionId === 'ehrenfels').length, 18);
   const hashes = ['f17eb91af25d026e7207df8ddad50cb39aaf4295faf661b783aa6ef2c4758f94', 'f8242115bd97c7ea6a65d0b42b521ad43341efeaf21bd5e51561bb3537652b5f', 'fe3e2a56328fc212bcf62299b7cf6e6e729ce1efdab34eaf8d5e391d4a037b80'];
