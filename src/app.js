@@ -1,7 +1,7 @@
 import { defaultContent, contentForRun } from './content/catalog.js';
 import { createRun, transition, getCurrentText, getAvailableConversations, getAvailableChoices,
   isLegalParty, getOpponentParty, getCrisisAssignments, getTotalScore, getTheoRemaining,
-  canUseTheo, canManualSave, validateRun } from './engine.js';
+  canUseTheo, canManualSave, validateRun, trialWasReached } from './engine.js';
 import { createStorage } from './storage.js';
 
 let content = defaultContent;
@@ -39,7 +39,10 @@ function fixtureNote() {
 }
 
 function introductionLinks() {
-  return values(content.regions).filter(region=>region.implemented).map(region=>`<p class="small muted">${esc(region.name)}</p>${region.trialIds.map((id,i)=>button(`${i<2?`小試練${i+1}`:'大試練'}の導入を読む`,'introduction',`data-id="${id}"`,'compact')).join('')}`).join('');
+  return values(content.regions).filter(region=>region.implemented).map(region=>{
+    const links=region.trialIds.map((id,i)=>content.prologue&&(!run||!trialWasReached(id,run,content))?'':button(`${i<2?`小試練${i+1}`:'大試練'}の導入を読む`,'introduction',`data-id="${id}"`,'compact')).join('');
+    return links?`<p class="small muted">${esc(region.name)}</p>${links}`:'';
+  }).join('');
 }
 function introductionBlocks(sceneId) {
   const scene=content.scenes[sceneId];
@@ -58,6 +61,7 @@ function introductionPanel() {
   return `<section class="dialogue-panel"><p class="small muted">${esc(content.scenes[run.position.sceneId].introductionLabel || '導入小説 · 10月16日版')}</p>${introductionText(run.position.sceneId)}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('読了して進む →','ack-introduction','','primary')}</div></div></section>`;
 }
 function introductionModal(trialId) {
+  if(content.prologue&&(!run||!trialWasReached(trialId,run,content))) return null;
   const scene=content.scenes[content.trials[trialId]?.introductionSceneId];
   if(!scene) return null;
   return {title:scene.title,body:`<p class="small muted">${esc(scene.introductionLabel || '10月16日版の導入小説')}<br>閲覧のみ。進行・得点・情報・既読は変更しません。</p>${introductionText(scene.id)}`,footer:button('閉じる','close-modal')};

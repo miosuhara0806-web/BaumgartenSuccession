@@ -409,7 +409,7 @@ function sceneInChain(sceneId, startId, content) {
 
 // A valid ID alone does not prove that this run has reached its source scene.
 // Keep this independent of global reading and of the bounded dialogue log.
-function trialWasReached(trialId, run, content, decision = false) {
+export function trialWasReached(trialId, run, content, decision = false) {
   const trial = content.trials[trialId];
   const progress = trial && run.chapterProgress[trial.regionId];
   if (!progress || progress.status === 'notStarted') return false;
