@@ -227,3 +227,34 @@
 @media (max-width: 420px) {
   .map-destinations { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Official companion artwork: crop only in cards; preserve the full original in details. */
+.official-portrait { position:relative; aspect-ratio:1; overflow:hidden; }
+.official-portrait::after { content:none; }
+.official-portrait img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:var(--face-position,50% 20%); }
+.official-portrait .portrait-fallback { position:absolute; inset:0; display:grid; place-items:center; font-size:3rem; }
+.official-portrait img.image-unavailable { display:none; }
+.full-portrait { aspect-ratio:2 / 3; }
+.official-profile .full-portrait { height:auto; min-height:0; aspect-ratio:auto; }
+.full-portrait img { position:relative; display:block; width:100%; height:auto; object-fit:contain; }
+.official-profile { grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; }
+.official-profile > div { min-width:0; }
+.profile-text { white-space:pre-line; }
+.confirmation-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; max-width:740px; margin:0 auto 24px; }
+.confirmation-grid .panel { min-width:0; }
+.confirmation-grid h2 { margin-top:12px; }
+.story-page { max-width:950px; }
+.story-parties { margin-bottom:20px; }
+.story-parties .member { margin-top:8px; }
+.tutorial-choices { display:grid; gap:12px; }
+.character-card.selected { border-color:var(--gold,#bfa05d); }
+@media(max-width:640px) {
+  .official-profile { grid-template-columns:minmax(0,1fr); }
+  .official-profile .full-portrait { width:min(100%,360px); margin:auto; }
+  .confirmation-grid { gap:10px; }
+  .confirmation-grid .panel { padding:12px; }
+  .confirmation-grid h2 { font-size:1.05rem; }
+}
+.prologue-draft .character-card { position:relative; }
+.prologue-draft .selected-mark { position:absolute; top:20px; right:20px; white-space:nowrap; }
+.full-portrait:has(img.image-unavailable) { aspect-ratio:2 / 3; }
