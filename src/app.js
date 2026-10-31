@@ -12,7 +12,7 @@ const slotLabels = { auto:'オートセーブ', manual1:'手動セーブ 1', man
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const values = object => Object.values(object || {});
 const sortedCharacters = () => values(content.characters).sort((a,b) => a.displayOrder-b.displayOrder);
-const nameOf = id => content.characters[id]?.name || content.commanders[id]?.name || ({'support.theo':'テオ','support.chancellor':'宰相'}[id]) || '記録';
+const nameOf = id => content.characters[id]?.name || content.commanders[id]?.name || content.speakers?.[id]?.name || ({'support.theo':'テオ','support.chancellor':'宰相'}[id]) || '記録';
 const regionName = id => content.regions[id]?.name || '王都出発前';
 const character = id => content.characters[id];
 const storage = createStorage({ validateRun:run => validateRun(run, contentForRun(run)) });
@@ -64,6 +64,10 @@ function introductionModal(trialId) {
 }
 
 function portrait(person, cls='') {
+  const asset = content.portraits?.[person.id];
+  if (asset) {
+    return `<div class="portrait official-portrait ${cls}" style="--face-position:${esc(asset.position)}"><span class="portrait-fallback" aria-hidden="true">${esc(person.name.slice(0,1))}</span><img src="${esc(asset.src)}" alt="${esc(person.name)}の肖像"></div>`;
+  }
   const commanderImages = {
     'commander.alphonse':'./src/assets/portraits/commander-alphonse.png',
     'commander.rosemond':'./src/assets/portraits/commander-rosemond.png'
@@ -86,7 +90,7 @@ function positionLabel(state) {
   if (!state?.position) return '保存位置を確認できません';
   const p=state.position;
   const stateContent=contentForRun(state);
-  const labels={ intro:'旅の導入',commanderSelection:'指揮官選択',draft:'同行者選抜',partyConfirmation:'両陣営確認',departure:'王都出発',map:'地図ホーム',chapterClosing:'地域の帰還会話',conversation:'同行者との会話',theoReport:'テオの調査報告',trialResult:'判断結果',storyEvent:'物語イベント' };
+  const labels={ intro:'旅の導入',commanderSelection:'指揮官選択',tutorial:'消えた式典の飾り',draft:'同行者選抜',partyConfirmation:'同行者の最終確認',departure:'王都出発',map:'地図ホーム',chapterClosing:'地域の帰還会話',conversation:'同行者との会話',theoReport:'テオの調査報告',trialResult:'判断結果',storyEvent:'物語イベント' };
   if (p.phase==='trial') return `${regionName(p.regionId)} / ${stateContent.trials[p.trialId]?.title || '試練'}`;
   return labels[p.phase] || p.phase;
 }
@@ -97,7 +101,7 @@ function treeArt() {
   return '<img class="kingdom-emblem" src="./src/assets/kingdom-emblem.svg" width="360" height="420" alt="" aria-hidden="true">';
 }
 function titlePage() {
-  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">ふたりの指揮官、八人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}</nav>${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">第一の訪問地　アルバ</div></div></main>`;
+  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">ふたりの指揮官、八人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}</nav>${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">${content.prologue?'王国を巡る、ふたりの継承戦':'第一の訪問地　アルバ'}</div></div></main>`;
 }
 function pageHeading(kicker, heading, body='', actions='') {
   return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${heading}</h1>${body?`<p class="muted small">${body}</p>`:''}</div>${actions?`<div class="button-row">${actions}</div>`:''}</div>`;
@@ -114,10 +118,12 @@ function roleCounts() {
   return counts;
 }
 function draftPage() {
+  if (content.prologue) return `<main class="page prologue-draft">${pageHeading('王国を見るための同行者','同行者を4人選んでください','同行者は新しい視点や情報を伝えます。追加案や意見が常に最善とは限りません。最後に判断するのは主人公自身です。')}<div class="draft-toolbar"><div class="role-counts"><span>選択中 <b>${run.partyIds.length} / 4</b></span></div>${button('この4人で旅立つ','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'','primary')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}の詳細${run.partyIds.includes(c.id)?'・選択中':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><p class="small muted">出身：${esc(regionName(c.originRegionId))}</p><p class="small">${esc(content.companionProfiles[c.id].summary)}</p><span class="text-button small">詳しく見る</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">選択中</span>':''}</div></button>`).join('')}</div><p class="small muted">選ばなかった四人は、もう一方の候補と旅をします。旅の途中で同行者を変更することはできません。</p></main>`;
   const counts=roleCounts();
   return `<main class="page">${stepStrip(1)}${pageHeading('固定パーティの選抜','四人の同行者を選ぶ','カードをタップして人物を知り、詳細の「選ぶ」で編成します。枠が埋まったら、先に選んだ人物を外してください。')}<div class="draft-toolbar"><div class="role-counts">${content.partySelection === 'free' ? `<span>同行者<b>${run.partyIds.length} / 4</b></span><span>8人から自由に選択</span>` : Object.entries(roles).map(([id,label])=>`<span>${label}<b>${counts[id]} / ${id==='melee'?2:1}</b></span>`).join('')}</div>${button('両陣営を確認 →','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}のプロフィール${run.partyIds.includes(c.id)?'・選択済み':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><span class="role">${roles[c.role]} / ${c.age}歳</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">同行</span>':''}</div></button>`).join('')}</div><p class="small muted" style="margin-top:22px">選ばれなかった四人は、もう一方の指揮官と旅立ちます。出発後は同行者を変更できません。</p></main>`;
 }
 function campPage() {
+  if (content.prologue) return `<main class="page">${pageHeading('同行者の最終確認','同行者はこちらの4名でよろしいですか？','この四名と共に、王国各地を巡ります。旅の途中で同行者を変更することはできません。')}<div class="confirmation-grid">${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<article class="panel">${portrait(c)}<h2>${esc(c.name)}</h2></article>`).join('')}</div><div class="button-row end">${button('選び直す','back-draft')}${button('この4人に決定する','depart','','primary')}</div></main>`;
   const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
   const camp=(label,leader,members)=>`<section class="panel"><p class="eyebrow">${label}</p><h2>${esc(leader.name)}</h2>${members.map(c=>`<div class="member-row">${member(c)}</div>`).join('')}</section>`;
   return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認',content.partySelection === 'free' ? '選んだ四人と、残り四人がそれぞれの陣営になります。同行者はこの周回で固定です。' : 'それぞれ近接二人、遠隔一人、回復一人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
@@ -213,12 +219,28 @@ function trialPage() {
 }
 function storyPage() {
   const block=getCurrentText(run,content);
+  if (content.prologue) {
+    const event = run.position.phase === 'storyEvent';
+    const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
+    const showParties=event || run.position.phase === 'departure';
+    const parties=showParties?`<div class="camp-grid story-parties"><section class="panel"><h3>${esc(nameOf(run.commanderId))}の一行</h3>${run.partyIds.map(id=>member(character(id))).join('')}</section><section class="panel"><h3>${esc(rival.name)}の一行</h3>${getOpponentParty(run,content).map(member).join('')}</section></div>`:'';
+    return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${block?dialoguePanel(block):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
+  }
   return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(block):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
+}
+function tutorialPage() {
+  const p=run.position, t=run.tutorial;
+  const block=getCurrentText(run,content);
+  const locations=values(content.prologue.tutorial.locations);
+  const controls=p.stage==='investigate'?`<section class="panel"><h2>調査する場所</h2><div class="button-row">${locations.map(l=>button(`${esc(l.name)}${t.investigatedLocationIds.includes(l.id)?' · 調査済み（再確認）':''}`,'tutorial-location',`data-id="${l.id}"`)).join('')}</div><p class="small muted">3地点をすべて調査した後に判断できます。調査済みの場所も再確認できます。</p><h2>式典飾りはどこにある？</h2><div class="tutorial-choices">${[['a','A. 王城倉庫'],['b','B. 西棟の保管場所'],['c','C. 式典会場']].map(([id,label])=>button(label,'tutorial-choice',`data-id="${id}" ${t.judgmentUnlocked?'':'disabled'}`)).join('')}</div></section>`:'';
+  return `<main class="page story-page">${pageHeading('序章の調査','消えた式典の飾り',`調査済み ${t.investigatedLocationIds.length} / 3 地点 · 誤答のペナルティはありません。`)}${block?dialoguePanel(block):controls}<div class="button-row">${button('会話ログ','log')}</div></main>`;
 }
 function profileModal(id) {
   const c=character(id), selected=run?.partyIds.includes(id);
   const choosing=!title&&run?.position.phase==='draft';
   const full=choosing&&!selected&&(content.partySelection === 'free' ? run.partyIds.length >= 4 : roleCounts()[c.role]>=(c.role==='melee'?2:1));
+  const profile=content.companionProfiles?.[id];
+  if(profile) return { title:c.name, large:true, body:`<div class="profile-layout official-profile">${portrait(c,'full-portrait')}<div><p class="eyebrow">${c.age}歳 / 出身：${esc(regionName(c.originRegionId))}</p><h3>人物紹介</h3><p class="profile-text">${esc(profile.profile)}</p><h3>旅で活きる視点</h3><p class="profile-text">${esc(profile.perspective)}</p><h3>本人の一言</h3><p class="profile-text">${esc(profile.quote)}</p>${full?'<div class="notice">同行者は4名まで選べます。</div>':''}</div></div>`,footer:choosing?button(selected?'選択を外す':'同行者に選ぶ','toggle-party',`data-id="${id}" ${full?'disabled':''}`,selected?'':'primary'):button('閉じる','close-modal') };
   return { title:c.name, body:`<div class="profile-layout">${portrait(c)}<div><p class="eyebrow">${roles[c.role]} / ${c.age}歳 / ${esc(c.gender)}</p><dl class="profile-meta"><dt>出身</dt><dd>${esc(regionName(c.originRegionId))}</dd><dt>活動地域</dt><dd>${esc(c.activityRegionIds.map(regionName).join('・'))}</dd><dt>得意分野</dt><dd>${esc(c.expertise.join('・'))}</dd></dl></div></div><p class="profile-text">${esc(c.profile)}</p><h3 class="section-label">主な関係性</h3><p class="small">${esc(c.relationships.join(' / '))}</p>${full?'<div class="notice">同行者の枠は埋まっています。先に選択済みの人物を外してください。</div>':''}`, footer:choosing?button(selected?'同行者から外す':'同行者に選ぶ','toggle-party',`data-id="${id}" ${full?'disabled':''}`,selected?'':'primary'):button('閉じる','close-modal') };
 }
 function memoBody(regionId) {
@@ -302,6 +324,8 @@ function render() {
       case 'draft': body=draftPage(); break;
       case 'partyConfirmation': body=campPage(); break;
       case 'map': body=mapPage(); break;
+      case 'tutorial': body=tutorialPage(); break;
+      case 'storyEvent': body=content.prologue?storyPage():trialPage(); break;
       case 'intro': case 'departure': body=storyPage(); break;
       default: body=trialPage();
     }
@@ -450,6 +474,8 @@ async function handle(action,id) {
     case 'title':
       if(!title) confirmDialog('タイトルへ戻る','<p>現在の進行はオートセーブされています。タイトルへ戻りますか。</p>',()=>{modal=null;title=true;render();},'タイトルへ'); break;
     case 'select-commander': await perform({type:'SELECT_COMMANDER',commanderId:id}); break;
+    case 'tutorial-location': await perform({type:'INSPECT_TUTORIAL_LOCATION',locationId:id}); break;
+    case 'tutorial-choice': await perform({type:'DECIDE_TUTORIAL',choiceId:id}); break;
     case 'profile': modal=profileModal(id); render(); break;
     case 'toggle-party': await perform({type:'TOGGLE_PARTY',characterId:id}); modal=null; render(); break;
     case 'confirm-party': await perform({type:'CONFIRM_PARTY'}); break;
@@ -500,6 +526,9 @@ async function handle(action,id) {
       break;
   }
 }
+app.addEventListener('error', event=>{
+  if (event.target.matches?.('.official-portrait img')) event.target.classList.add('image-unavailable');
+}, true);
 app.addEventListener('click', event=>{
   const target=event.target.closest('button[data-action]');
   if(!target||target.disabled) return;

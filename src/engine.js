@@ -1,6 +1,6 @@
 // Pure, serializable game state. Persistence and cross-run read history live elsewhere.
 export const GOVERNANCE_TAGS = Object.freeze(['people', 'reform', 'stability', 'coordination', 'fairness']);
-const SETUP_PHASES = new Set(['intro', 'commanderSelection', 'draft', 'partyConfirmation']);
+const SETUP_PHASES = new Set(['intro', 'commanderSelection', 'tutorial', 'draft', 'partyConfirmation']);
 const PHASES = new Set([...SETUP_PHASES, 'departure', 'map', 'trial', 'conversation', 'theoReport', 'trialResult', 'chapterClosing', 'storyEvent', 'ending', 'completed']);
 const ROLE_LIMITS = { melee: 2, ranged: 1, healer: 1 };
 const clone = value => structuredClone(value);
@@ -186,6 +186,17 @@ function finishBlockSequence(run, content) {
   }
   switch (p.phase) {
     case 'intro': run.position = { phase: 'commanderSelection' }; return false;
+    case 'tutorial': {
+      if (p.stage === 'location') {
+        if (!run.tutorial.investigatedLocationIds.includes(p.locationId)) run.tutorial.investigatedLocationIds.push(p.locationId);
+        run.tutorial.judgmentUnlocked = Object.keys(content.prologue.tutorial.locations).every(id => run.tutorial.investigatedLocationIds.includes(id));
+      }
+      if (p.stage === 'success') {
+        run.tutorial.postSuccessProcessed = true;
+        run.position = { phase: 'draft' };
+      } else run.position = { phase: 'tutorial', stage: 'investigate' };
+      return false;
+    }
     case 'departure': enterMap(run, content); return true;
     case 'trial':
       if (p.stage === 'decision') return false;
@@ -240,6 +251,7 @@ export function createRun(content, { runId = globalThis.crypto.randomUUID(), now
     position: { phase: 'intro', sceneId: content.introSceneId, blockIndex: 0 },
     chapterProgress: Object.fromEntries(Object.keys(content.regions).map(id => [id, { status: 'notStarted' }])),
     trialResults: {}, heardConversationIds: [], acquiredInformation: {}, theoInvestigations: {}, storyEvents: {}, recentDialogueLog: [],
+    ...(content.prologue ? { tutorial: { started: false, investigatedLocationIds: [], judgmentUnlocked: false, completed: false, postSuccessProcessed: false } } : {}),
   };
   normalize(run, content);
   validateRun(run, content);
@@ -267,7 +279,30 @@ export function transition(current, action, content) {
     }
     case 'SELECT_COMMANDER':
       assert(['commanderSelection', 'draft'].includes(p.phase) && own(content.commanders, action.commanderId), '指揮官を選べません。');
-      run.commanderId = action.commanderId; run.position = { phase: 'draft' }; break;
+      assert(!content.prologue || p.phase === 'commanderSelection', '主人公は既に決定しています。');
+      run.commanderId = action.commanderId;
+      if (content.prologue) {
+        run.tutorial.started = true;
+        run.position = { phase: 'tutorial', stage: 'opening', sceneId: content.prologue.tutorial.entrySceneId, blockIndex: 0 };
+        normalize(run, content);
+      } else run.position = { phase: 'draft' };
+      break;
+    case 'INSPECT_TUTORIAL_LOCATION': {
+      assert(content.prologue && p.phase === 'tutorial' && p.stage === 'investigate', '今は調査できません。');
+      const location = content.prologue.tutorial.locations[action.locationId];
+      assert(location, '調査地点が不明です。');
+      run.position = { phase: 'tutorial', stage: 'location', locationId: location.id, sceneId: location.sceneId, blockIndex: 0 };
+      normalize(run, content); break;
+    }
+    case 'DECIDE_TUTORIAL': {
+      assert(content.prologue && p.phase === 'tutorial' && p.stage === 'investigate' && run.tutorial.judgmentUnlocked && !run.tutorial.completed, '3地点の調査を終えてから判断してください。');
+      assert(['a', 'b', 'c'].includes(action.choiceId), '判断が不正です。');
+      const correct = action.choiceId === 'b';
+      if (correct) run.tutorial.completed = true;
+      run.position = { phase: 'tutorial', stage: correct ? 'success' : 'feedback',
+        sceneId: correct ? content.prologue.tutorial.successSceneId : content.prologue.tutorial.feedbackSceneIds[action.choiceId], blockIndex: 0 };
+      normalize(run, content); break;
+    }
     case 'TOGGLE_PARTY': {
       assert(p.phase === 'draft' && own(content.characters, action.characterId), '同行者を変更できません。');
       if (run.partyIds.includes(action.characterId)) run.partyIds = run.partyIds.filter(id => id !== action.characterId);
@@ -422,6 +457,7 @@ function validatePosition(position, run, content, nested = false) {
   const p = position;
   const allowed = {
     intro: ['sceneId', 'blockIndex'], commanderSelection: [], draft: [], partyConfirmation: [],
+    tutorial: ['stage', 'locationId', 'sceneId', 'blockIndex'],
     departure: ['sceneId', 'blockIndex'], map: [],
     trial: ['stage', 'regionId', 'trialId', 'sceneId', 'blockIndex'],
     trialResult: ['stage', 'regionId', 'trialId', 'sceneId', 'blockIndex'],
@@ -432,7 +468,7 @@ function validatePosition(position, run, content, nested = false) {
   };
   assert(Object.keys(p).every(key => key === 'phase' || allowed[p.phase].includes(key)), '進行位置に不要な項目があります。');
   if (p.phase === 'ending') assert((p.sceneId === undefined) === (p.blockIndex === undefined), '終幕の本文位置が不正です。');
-  const textPhases = ['intro', 'departure', 'trial', 'trialResult', 'chapterClosing', 'conversation', 'theoReport', 'storyEvent'];
+  const textPhases = ['intro', 'departure', 'trial', 'trialResult', 'chapterClosing', 'conversation', 'theoReport', 'storyEvent', ...(p.phase === 'tutorial' && p.stage !== 'investigate' ? ['tutorial'] : [])];
   if (textPhases.includes(p.phase) || (p.phase === 'ending' && p.sceneId)) {
     assert(sceneKnown(p.sceneId, content) && Number.isInteger(p.blockIndex) && p.blockIndex >= 0, '本文の再開位置が不正です。');
     const probe = { ...run, position: p };
@@ -473,6 +509,16 @@ function validatePosition(position, run, content, nested = false) {
     }
   } else assert(!p.returnPosition, '不要な会話復帰位置です。');
   if (p.phase === 'intro') assert(sceneInChain(p.sceneId, content.introSceneId, content), '導入場面が不正です。');
+  if (p.phase === 'tutorial') {
+    const tutorial = content.prologue?.tutorial;
+    assert(tutorial && ['opening', 'investigate', 'location', 'feedback', 'success'].includes(p.stage), 'チュートリアル位置が不正です。');
+    if (p.stage === 'investigate') assert(p.sceneId === undefined && p.blockIndex === undefined, '調査選択位置が不正です。');
+    if (p.stage === 'opening') assert(sceneInChain(p.sceneId, tutorial.entrySceneId, content), '調査導入位置が不正です。');
+    if (p.stage === 'location') assert(tutorial.locations[p.locationId]?.sceneId === p.sceneId, '調査地点が不正です。');
+    else assert(p.locationId === undefined, '不要な調査地点があります。');
+    if (p.stage === 'feedback') assert(run.tutorial.judgmentUnlocked && Object.values(tutorial.feedbackSceneIds).includes(p.sceneId), '再判断位置が不正です。');
+    if (p.stage === 'success') assert(sceneInChain(p.sceneId, tutorial.successSceneId, content), '正解後会話の位置が不正です。');
+  }
   if (p.phase === 'departure') assert(sceneInChain(p.sceneId, content.departureSceneId, content), '出発場面が不正です。');
   if (p.phase === 'storyEvent') {
     const event = content.storyEvents[p.eventId];
@@ -492,6 +538,20 @@ export function validateRun(run, content) {
   if (!['intro', 'commanderSelection'].includes(run.position.phase)) assert(own(content.commanders, run.commanderId), '指揮官が未選択です。');
   if (!SETUP_PHASES.has(run.position.phase) || run.position.phase === 'partyConfirmation') assert(isLegalParty(run.partyIds, content), '編成が不正です。');
   if (['intro', 'commanderSelection'].includes(run.position.phase)) assert(run.commanderId === null && run.partyIds.length === 0, '選抜前の状態が不正です。');
+  if (content.prologue) {
+    const t = run.tutorial, phase = run.position.phase;
+    assert(object(t) && ['started', 'judgmentUnlocked', 'completed', 'postSuccessProcessed'].every(key => typeof t[key] === 'boolean'), 'チュートリアル記録が不正です。');
+    assert(unique(t.investigatedLocationIds) && t.investigatedLocationIds.every(id => own(content.prologue.tutorial.locations, id)), '調査済み地点が不正です。');
+    assert(t.started === !!run.commanderId && t.judgmentUnlocked === (t.investigatedLocationIds.length === Object.keys(content.prologue.tutorial.locations).length), '調査解放状態が不正です。');
+    assert(!t.completed || t.judgmentUnlocked, '調査完了前に正解しています。');
+    assert(!t.postSuccessProcessed || t.completed, '正解後会話の状態が不正です。');
+    if (['intro', 'commanderSelection'].includes(phase)) assert(!t.started && t.investigatedLocationIds.length === 0 && !t.completed && !t.postSuccessProcessed, '開始前に調査記録があります。');
+    else if (phase === 'tutorial') {
+      assert(run.partyIds.length === 0 && !t.postSuccessProcessed && t.completed === (run.position.stage === 'success'), '調査と選抜の順序が不正です。');
+      if (run.position.stage === 'opening') assert(t.investigatedLocationIds.length === 0, '調査導入前に調査記録があります。');
+      assert(run.heardConversationIds.length === 0 && Object.keys(run.acquiredInformation).length === 0 && Object.keys(run.theoInvestigations).length === 0 && Object.keys(run.storyEvents).length === 0, '調査に本編の記録があります。');
+    } else assert(t.completed && t.postSuccessProcessed, 'チュートリアルを終えていません。');
+  } else assert(run.position.phase !== 'tutorial' && run.tutorial === undefined, 'この内容版にチュートリアルはありません。');
   assert(unique(run.visitOrder) && run.visitOrder.every(id => content.regions[id]?.kind === 'normal' && content.regions[id].implemented), '訪問順が不正です。');
   assert(Object.keys(run.chapterProgress).length === Object.keys(content.regions).length && Object.keys(content.regions).every(id => own(run.chapterProgress, id)), '地域進行の参照先が不正です。');
   let activeCount = 0;
