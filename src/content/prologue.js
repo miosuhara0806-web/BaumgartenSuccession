@@ -57,7 +57,6 @@ export function createPrologueContent() {
   } };
   const departureId = scene('prologue.departure', '王都出発', both(manuscript.departure));
   content.departureSceneId = scene('prologue.court', '双方の一行が決まる', [
-    narration('主人公側四名と相手側四名が、それぞれの候補の後方に並ぶ。'),
     ...manuscript.courtCommon,
     ...variant(manuscript.courtAlphonse, 'commander.alphonse'),
     ...variant(manuscript.courtRosemond, 'commander.rosemond'),

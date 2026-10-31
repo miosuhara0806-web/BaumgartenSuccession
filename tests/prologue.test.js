@@ -40,6 +40,8 @@ test('approved dialogue/narration and all eight introductions match the source, 
       .replace(/^【.+】$/gm, '').trim().replace(/\s/g, '');
     assert.equal(manuscript[key].map(row => row.text).join('').replace(/\s/g, ''), text, key);
   }
+  assert.deepEqual(content.scenes['prologue.court'].blocks.slice(0, manuscript.courtCommon.length)
+    .map(id => ({ text: content.textBlocks[id].text, speakerId: content.textBlocks[id].speakerId })), manuscript.courtCommon);
   for (const [id, p] of Object.entries(content.companionProfiles)) {
     const name = content.characters[id].name;
     const text = section(16).split(`### ${name}\n`)[1].split('\n### ')[0].trim();
