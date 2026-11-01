@@ -278,3 +278,18 @@
 .event-cg-fallback { display:none; padding:16px; margin:0; font-size:.85rem; color:var(--muted); }
 .event-cg img.image-unavailable { display:none; }
 .event-cg:has(img.image-unavailable) .event-cg-fallback { display:block; }
+.comic-page { max-width:1100px; }
+.comic-figure { margin:0; }
+.comic-fit img { display:block; width:100%; max-width:1024px; height:auto; margin:auto; }
+.comic-zoom { margin-bottom:16px; }
+.comic-zoom summary { cursor:pointer; color:var(--green); padding:12px 0; }
+.comic-zoom-scroll { max-height:75dvh; overflow:auto; border:1px solid var(--line); }
+.comic-zoom-scroll .comic-figure { width:1024px; }
+.comic-zoom-scroll img { display:block; width:1024px; height:auto; max-width:none; }
+.comic-reader:has(.comic-zoom[open]) .comic-fit { display:none; }
+.comic-fallback { display:none; padding:16px; color:var(--muted); }
+.comic-figure img.image-unavailable { display:none; }
+.comic-figure:has(img.image-unavailable) .comic-fallback { display:block; }
+.reunion-tools { margin-top:20px; }
+.reunion-page .story-parties .member { margin-top:12px; }
+.comic-page ~ .toast { position:static; transform:none; margin:16px auto; }

@@ -7,7 +7,7 @@ const path = require('node:path');
   const {content}=await import('../src/content/prologue.js');
   const h=await import('../tests/helpers/prologue.js');
   const e=await import('../src/engine.js');
-  const out=path.resolve(process.env.READING_BROWSER_OUTPUT||'../preview/prologue-cg-20261101/browser');
+  const out=path.resolve(process.env.READING_BROWSER_OUTPUT||'../preview/reunion-comic-20261101/browser');
   const url=process.env.READING_BROWSER_URL||'http://127.0.0.1:4173/';
   await mkdir(out,{recursive:true});
   const report={url,scenarios:[],errors:[]};
@@ -39,7 +39,7 @@ const path = require('node:path');
   }
   async function read(page){
     for(let i=0;await page.locator(q('ack-page')).count();i++){
-      if((await page.locator('.dialogue-panel').textContent()).includes('少し間を置く。')) {
+      if((await page.locator('.page').textContent()).includes('少し間を置く。')) {
         assert.equal(await page.locator('.narration-turn').count(),1);
         assert.ok(await page.locator('.dialogue-turn').count()>=2);
         assert.equal(await page.locator('.narration-turn .speaker').count(),0);
@@ -173,9 +173,53 @@ const path = require('node:path');
       let r=h.finishCity(h.start(h.defaultParty,commanderId),'alba');
       r=h.finishCity(r,'rude',{stopBeforeClosing:true});await seed(page,r);
       assert.equal((await stored(page)).slot.run.position.phase,'storyEvent');
-      await click(page,'ack-page');const mid=(await stored(page)).slot.run;
-      await resume(page);assert.deepEqual((await stored(page)).slot.run,mid);await read(page);
+      assert.equal(await page.locator('.story-parties').count(),0);
+      assert.match(await page.locator('.dialogue-text').textContent(),/街道沿いの宿場/);
+      await click(page,'ack-page');
+      assert.deepEqual(await page.locator('.story-parties h2').allTextContents(),['アルフォンスの一行','ローズモンドの一行']);
+      await icons(page,'.story-parties',8);await layout(page);
+      const reunion=(await stored(page)).slot.run;
+      const own=reunion.partyIds,other=e.getOpponentParty(reunion,content).map(c=>c.id);
+      const ordered=commanderId.endsWith('alphonse')?[...own,...other]:[...other,...own];
+      assert.deepEqual(await page.locator('.story-parties .member img').evaluateAll(list=>list.map(el=>el.getAttribute('src'))),ordered.map(id=>content.portraits[id].src));
+      await page.screenshot({path:path.join(out,`${label}-reunion-parties.png`),fullPage:true});
+      await click(page,'ack-page');
+      const comicRun=(await stored(page)).slot.run;
+      const comic=page.locator('.comic-fit img');await comic.evaluate(el=>el.decode());
+      assert.equal(await page.locator('.dialogue-text').count(),0);
+      const imageBox=await comic.evaluate(el=>{
+        const box=el.getBoundingClientRect();return {width:box.width,height:box.height,nw:el.naturalWidth,nh:el.naturalHeight,bottom:box.bottom,
+          controls:document.querySelector('.dialogue-actions').getBoundingClientRect().top};
+      });
+      assert.equal(imageBox.nw,1024);assert.equal(imageBox.nh,1536);
+      assert.ok(Math.abs(imageBox.width/imageBox.height-2/3)<0.01);assert.ok(imageBox.bottom<=imageBox.controls);
+      if(await page.locator('.toast').count())assert.ok(await page.locator('.toast').evaluate(el=>el.getBoundingClientRect().top)>=imageBox.bottom);
+      await layout(page);await page.screenshot({path:path.join(out,`${label}-reunion-comic.png`),fullPage:true});
+      await page.locator('.comic-zoom summary').click();
+      const scroll=page.locator('.comic-zoom-scroll');
+      await scroll.evaluate(el=>{el.scrollTop=el.scrollHeight;el.scrollLeft=el.scrollWidth;});
+      assert.ok(await scroll.evaluate(el=>el.scrollTop>0&&el.scrollTop+el.clientHeight>=el.scrollHeight-1));
+      if(viewport.width<760)assert.ok(await scroll.evaluate(el=>el.scrollLeft>0));
+      await layout(page);await page.screenshot({path:path.join(out,`${label}-comic-zoom-bottom.png`),fullPage:true});
+      await page.locator('.comic-zoom summary').click();
+      await click(page,'saves');await click(page,'save-slot','manual1');
+      await resume(page);assert.deepEqual((await stored(page)).slot.run,comicRun);
+      await click(page,'ack-page');const closing=await stored(page);
+      await click(page,'read-prev');assert.equal(await page.locator('.comic-reader').count(),1);
+      await click(page,'read-forward');assert.deepEqual(await stored(page),closing);
+      await click(page,'saves');await click(page,'load-slot','manual1');await click(page,'accept-confirm');
+      assert.deepEqual((await stored(page)).slot.run,comicRun);
+      await click(page,'ack-page');assert.match(await page.locator(q('ack-page')).textContent(),/旅を続ける/);
+      await click(page,'ack-page');
       assert.equal((await stored(page)).slot.run.storyEvents['event.midgame-reunion'].status,'completed');
+      assert.equal((await stored(page)).slot.run.position.phase,'map');
+      let completed=(await stored(page)).slot.run;
+      for(const city of ['hexerei','anchoring','ehrenfels'])completed=h.finishCity(completed,city);
+      assert.equal(Object.keys(completed.trialResults).length,15);
+      assert.equal(completed.storyEvents['event.midgame-reunion'].status,'completed');
+      await page.route(url=>decodeURIComponent(url.pathname).endsWith('/夕暮れの宿場で再会する双子(3).png'),route=>route.abort());
+      await seed(page,comicRun);await page.locator('.comic-fit .comic-fallback').waitFor({state:'visible'});
+      await click(page,'ack-page');await click(page,'ack-page');
       assert.equal((await stored(page)).slot.run.position.phase,'map');
       await icons(page,'.map-sidebar .member',4);
       // Failed portrait requests must leave all names and navigation usable.
@@ -201,6 +245,7 @@ const path = require('node:path');
       assert.equal(await page.locator('.event-cg').count(),0);
       report.scenarios.push({label,commanderId,groupedDeclarationTurns:4,feedbackChoices:results,
         cgShared:true,cgAspectRatio:true,cgResume:true,cgReview:true,cgFailureProgress:true,
+        reunionComic:true,reunionManualSave:true,reunionZoom:true,reunionCompletion:true,remainingCities:true,
         courtPages:courtMixed,officialIcons:true,missingImageNames:true,reviewReadOnly:true,departureName:true,freeSelection:true,tutorial:true,reunionResume:true,status:'passed'});
       await context.close();
     }

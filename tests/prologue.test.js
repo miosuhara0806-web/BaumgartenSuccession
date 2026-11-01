@@ -206,8 +206,7 @@ test('2nd city closing is completely read and committed before reunion; no map o
       assert.ok(!b.speakerId || b.speakerId.startsWith('commander.'));
       r = act(roundtrip(r), 'ACK_TEXT');
     }
-    const offset=commanderId.endsWith('alphonse')?0:manuscript.reunionAlphonse.length;
-    assert.deepEqual(seen, manuscript[commanderId.endsWith('alphonse') ? 'reunionAlphonse' : 'reunionRosemond'].map((row,i)=>editedText(content.scenes['prologue.midgame-reunion'].blocks[offset+i],row.text)));
+    assert.deepEqual(seen, ['introduction','parties','comic','closing'].map(stage=>content.textBlocks[`text.prologue.reunion-comic.${stage}.1`].text));
     assert.equal(r.position.phase, 'map'); assert.equal(r.storyEvents[eventId].status, 'completed');
     assert.deepEqual(gameData(r), { ...unchanged, storyEvents: { [eventId]: { status: 'completed' } } });
     assert.deepEqual(act(roundtrip(r), 'RETURN_MAP'), r);

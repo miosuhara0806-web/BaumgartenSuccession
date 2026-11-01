@@ -222,17 +222,19 @@ function trialSidebar() {
   const decision=run.position.phase==='trial'&&run.position.stage==='decision';
   return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p></section><section class="panel"><h3>テオの調査</h3><p class="small muted">残り ${getTheoRemaining(run)} / 2 回<br>各地域の大試練で一度だけ。</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
 }
-function dialoguePanel(blocks) {
-  const page=Array.isArray(blocks)?blocks:[blocks].filter(Boolean);
+function readingActions(page, nextLabel='次へ →') {
   const allRead=page.every(block=>reader.readTextKeys.includes(block.readKey));
   const someRead=page.some(block=>reader.readTextKeys.includes(block.readKey));
   const preview=readingPreviewIndex!==null;
-  const nextAction=preview?'read-forward':'ack-page';
+  return `<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button type="button" class="button" data-action="read-prev" ${!canReadPrevious()?'disabled':''}>← 前へ</button><button class="text-button small" data-action="skip" ${preview||!allRead?'disabled':''}>既読スキップ</button>${button(preview?'次へ →':nextLabel,preview?'read-forward':'ack-page','','primary')}</div></div>`;
+}
+function dialoguePanel(blocks, nextLabel='次へ →') {
+  const page=Array.isArray(blocks)?blocks:[blocks].filter(Boolean);
   const multipleSpeakers=new Set(page.map(block=>block.speakerId || null)).size>1;
   const text=multipleSpeakers
     ? `<div class="dialogue-turns">${page.map(block=>`<div class="dialogue-turn${block.speakerId?'':' narration-turn'}">${block.speakerId?speakerLabel(block.speakerId):''}<div class="dialogue-text">${esc(block.text)}</div></div>`).join('')}</div>`
     : `${page[0]?.speakerId?speakerLabel(page[0].speakerId):''}<div class="dialogue-text">${page.map(block=>esc(block.text)).join('<br><br>')}</div>`;
-  return `<section class="dialogue-panel">${text}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button type="button" class="button" data-action="read-prev" ${!canReadPrevious()?'disabled':''}>← 前へ</button><button class="text-button small" data-action="skip" ${preview||!allRead?'disabled':''}>既読スキップ</button>${button('次へ →',nextAction,'','primary')}</div></div></section>`;
+  return `<section class="dialogue-panel">${text}${readingActions(page,nextLabel)}</section>`;
 }
 function conversationBlocks(startIndex=0) {
   const p=run?.position;
@@ -303,6 +305,8 @@ function storyEventCg(page) {
 function storyPage() {
   const page=getCurrentTextPage(run,content);
   const block=page[0];
+  const scene=content.scenes[run.position.sceneId];
+  if(run.position.phase==='storyEvent' && scene?.reunionStage) return reunionPage(page,scene);
   if (content.prologue) {
     const event = run.position.phase === 'storyEvent';
     const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
@@ -311,6 +315,23 @@ function storyPage() {
     return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${storyEventCg(page)}${block?dialoguePanel(page):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
   }
   return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(page):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
+}
+function reunionPage(page, scene) {
+  const stage=scene.reunionStage;
+  let body='';
+  if(stage==='parties') {
+    const rival=getOpponentParty(run,content);
+    const parties=['commander.alphonse','commander.rosemond'].map(id=>content.commanders[id]).map(leader=>{
+      const members=leader.id===run.commanderId?run.partyIds.map(character):rival;
+      return `<section class="panel"><h2>${esc(leader.name)}の一行</h2>${members.map(member).join('')}</section>`;
+    }).join('');
+    body=`<p class="small muted">${esc(page[0].text)}</p><div class="camp-grid story-parties">${parties}</div>${readingActions(page,scene.nextLabel)}`;
+  } else if(stage==='comic') {
+    const cg=scene.comic;
+    const image=`<img src="${esc(cg.src)}" width="${cg.width}" height="${cg.height}" alt="${esc(cg.alt)}" decoding="async">`;
+    body=`<div class="comic-reader"><details class="comic-zoom"><summary>拡大して読む</summary><div class="comic-zoom-scroll" role="region" aria-label="拡大した再会漫画。上下左右にスクロールできます" tabindex="0"><figure class="comic-figure">${image}<p class="comic-fallback">漫画を読み込めませんでした。次へ進むことができます。</p></figure></div></details><figure class="comic-figure comic-fit">${image}<p class="comic-fallback">漫画を読み込めませんでした。次へ進むことができます。</p></figure></div>${readingActions(page,scene.nextLabel)}`;
+  } else body=dialoguePanel(page,scene.nextLabel);
+  return `<main class="page story-page reunion-page${stage==='comic'?' comic-page':''}">${pageHeading('双子の再会 ― 街道沿いの宿場',esc(scene.title))}${body}<div class="button-row reunion-tools">${button('セーブ / ロード','saves')}${button('会話ログ','log')}</div></main>`;
 }
 function tutorialPage() {
   const p=run.position, t=run.tutorial;
@@ -387,8 +408,8 @@ function slotSummary(slot) {
   } catch { return '<p class="muted">この保存データは確認が必要です。ロード時に検証します。</p>'; }
 }
 function savesModal() {
-  const canSave=!title&&run&&canManualSave(run)&&!pending;
-  return { title:title?'旅の記録をロード':'セーブ / ロード', large:true, body:`<p class="small muted">このブラウザに保存します。手動セーブは地図や試練の区切りで使えます。ロードすると選んだ地点へ戻り、オートセーブも更新されます。</p>${Object.entries(slotLabels).map(([id,label])=>`<section class="save-slot"><div class="save-slot-header"><h3>${label} ${id==='auto'?'<span class="save-badge">AUTO</span>':''}</h3><time class="small muted">${slots[id]?.savedAt?esc(new Date(slots[id].savedAt).toLocaleString('ja-JP')):''}</time></div>${slotSummary(slots[id])}<div class="button-row">${id!=='auto'?button('ここに保存','save-slot',`data-id="${id}" ${!canSave?'disabled':''}`,'compact'):''}${button('ロード','load-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact')}${button('削除','delete-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact danger')}</div></section>`).join('')}`, footer:button('閉じる','close-modal') };
+  const canSave=!title&&run&&canManualSave(run,content)&&!pending&&readingPreviewIndex===null;
+  return { title:title?'旅の記録をロード':'セーブ / ロード', large:true, body:`<p class="small muted">このブラウザに保存します。手動セーブは地図や試練の区切り、再会漫画のイベント中に使えます。ロードすると選んだ地点へ戻り、オートセーブも更新されます。</p>${Object.entries(slotLabels).map(([id,label])=>`<section class="save-slot"><div class="save-slot-header"><h3>${label} ${id==='auto'?'<span class="save-badge">AUTO</span>':''}</h3><time class="small muted">${slots[id]?.savedAt?esc(new Date(slots[id].savedAt).toLocaleString('ja-JP')):''}</time></div>${slotSummary(slots[id])}<div class="button-row">${id!=='auto'?button('ここに保存','save-slot',`data-id="${id}" ${!canSave?'disabled':''}`,'compact'):''}${button('ロード','load-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact')}${button('削除','delete-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact danger')}</div></section>`).join('')}`, footer:button('閉じる','close-modal') };
 }
 function modalMarkup() {
   if(!modal) return '';
@@ -605,7 +626,7 @@ async function handle(action,id) {
     case 'log': modal=logModal(); render(); break;
     case 'saves': await openSaves(); break;
     case 'save-slot': {
-      if(!run||!canManualSave(run)||id==='auto') break;
+      if(!run||!canManualSave(run,content)||readingPreviewIndex!==null||id==='auto') break;
       const save=async()=>{
         const snapshot=structuredClone(run),expectedRevision=revision;
         modal=null;
@@ -631,7 +652,7 @@ async function handle(action,id) {
   }
 }
 app.addEventListener('error', event=>{
-  if (event.target.matches?.('.official-portrait img, .face-icon img, .event-cg img')) event.target.classList.add('image-unavailable');
+  if (event.target.matches?.('.official-portrait img, .face-icon img, .event-cg img, .comic-figure img')) event.target.classList.add('image-unavailable');
 }, true);
 app.addEventListener('click', event=>{
   const target=event.target.closest('button[data-action]');

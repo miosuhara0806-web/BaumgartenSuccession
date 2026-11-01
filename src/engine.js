@@ -165,9 +165,10 @@ export function canUseTheo(run, content) {
     !run.theoInvestigations[region.id] && getTheoRemaining(run) > 0;
 }
 
-export function canManualSave(run) {
+export function canManualSave(run, content) {
   const p = run.position;
   return p.phase === 'map' || p.phase === 'trialResult' ||
+    (p.phase === 'storyEvent' && content?.scenes[p.sceneId]?.allowManualSave === true) ||
     (p.phase === 'trial' && ((p.stage === 'intro' && p.blockIndex === 0) || p.stage === 'decision'));
 }
 
@@ -195,7 +196,7 @@ function enterMap(run, content) {
     ((item.trigger === 'afterTwoRegions' && count >= 2) || (item.trigger === 'beforeFinal' && count >= 4)));
   if (event) {
     run.storyEvents[event.id] = { status: 'inProgress' };
-    run.position = { phase: 'storyEvent', eventId: event.id, sceneId: event.entrySceneId, blockIndex: 0 };
+    run.position = { phase: 'storyEvent', eventId: event.id, sceneId: event.presentationEntrySceneId || event.entrySceneId, blockIndex: 0 };
   }
 }
 
@@ -458,7 +459,7 @@ function sceneWasReached(sceneId, run, content) {
     }
   }
   for (const event of Object.values(content.storyEvents)) {
-    if (run.storyEvents[event.id] && (sceneInChain(sceneId, event.entrySceneId, content) || sceneInChain(sceneId, event.completionSceneId, content))) return true;
+    if (run.storyEvents[event.id] && (sceneInChain(sceneId, event.entrySceneId, content) || sceneInChain(sceneId, event.presentationEntrySceneId, content) || sceneInChain(sceneId, event.completionSceneId, content))) return true;
   }
   return ['ending', 'completed'].includes(run.position.phase) && sceneInChain(sceneId, content.endingSceneId, content);
 }
@@ -544,7 +545,7 @@ function validatePosition(position, run, content, nested = false) {
   if (p.phase === 'departure') assert(sceneInChain(p.sceneId, content.departureSceneId, content), '出発場面が不正です。');
   if (p.phase === 'storyEvent') {
     const event = content.storyEvents[p.eventId];
-    assert(event && run.storyEvents[p.eventId]?.status === 'inProgress' && (sceneInChain(p.sceneId, event.entrySceneId, content) || sceneInChain(p.sceneId, event.completionSceneId, content)), 'イベント位置が不正です。');
+    assert(event && run.storyEvents[p.eventId]?.status === 'inProgress' && (sceneInChain(p.sceneId, event.entrySceneId, content) || sceneInChain(p.sceneId, event.presentationEntrySceneId, content) || sceneInChain(p.sceneId, event.completionSceneId, content)), 'イベント位置が不正です。');
   }
 }
 

@@ -76,6 +76,23 @@ export function createPrologueContent() {
       ...variant(manuscript.reunionRosemond, 'commander.rosemond'),
     ]),
   };
+  const reunionPages = [
+    ['introduction', '再会への道', '2つ目の都市を後にして、数日。次の目的地を決める前に立ち寄った街道沿いの宿場で、双子は再び顔を合わせる。', '同行者を確認 →'],
+    ['parties', '2つの一行', 'アルフォンスとローズモンド。それぞれの旅を共にしてきた4人が、双子の後ろに並ぶ。', '漫画を読む →'],
+    ['comic', '双子の再会', '街道沿いの宿場で、双子は言葉を交わし、互いの無事を確かめた。', '読み終えて次へ →'],
+    ['closing', 'それぞれの旅へ', '旅先での判断は、王都で思っていたほど単純ではない。一つの立場だけでは決められず、選んだ答えが別の誰かに影響することもある。双子は、互いが同じ難しさに向き合っていると確かめ合った。\n\n兄妹であり、同じ王位を目指す競争相手でもある2人は、次に王都で会う時を胸に、それぞれの一行と別々の道へ歩き出す。', '旅を続ける'],
+  ];
+  for (const [index, [stage, title, text, nextLabel]] of reunionPages.entries()) {
+    const id = scene(`prologue.reunion-comic.${stage}`, title, [narration(text)],
+      index < reunionPages.length - 1 ? `prologue.reunion-comic.${reunionPages[index + 1][0]}` : undefined);
+    Object.assign(content.scenes[id], { reunionStage: stage, nextLabel, allowManualSave: true });
+  }
+  // Keep entrySceneId and its original blocks valid for existing in-progress saves.
+  content.storyEvents[eventId].presentationEntrySceneId = 'prologue.reunion-comic.introduction';
+  content.scenes['prologue.reunion-comic.comic'].comic = {
+    src: './src/assets/夕暮れの宿場で再会する双子(3).png', width: 1024, height: 1536,
+    alt: '夕暮れの街道沿いの宿場で再会し、互いを気遣いながら次の旅へ向かうアルフォンスとローズモンドの漫画。',
+  };
   applyPrologueCopyEdits(content);
   applyDialoguePageGroups(content);
   return content;

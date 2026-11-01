@@ -56,6 +56,87 @@ test('the original palace CG is confined to the shared twins exchange, including
   assert.doesNotMatch(app.storyPage(),/class="event-cg"/);
 });
 
+const reunionStart=(commanderId,party)=>finishCity(finishCity(start(party,commanderId),'alba'),'rude',{stopBeforeClosing:true});
+const reunionStages=['introduction','parties','comic','closing'];
+test('the unchanged reunion comic has four ordered stages and each route shows its actual two parties',async()=>{
+  const cg=content.scenes['prologue.reunion-comic.comic'].comic;
+  const image=await readFile(new URL(`../${cg.src.replace('./','')}`,import.meta.url));
+  assert.equal(createHash('sha256').update(image).digest('hex'),'9d2540c9df8ed34cb938e31431f84de62e004a788a1c704e317310e2baa85ef5');
+  assert.equal(image.readUInt32BE(16),cg.width);assert.equal(image.readUInt32BE(20),cg.height);
+  for(const commanderId of Object.keys(content.commanders)) {
+    const party=commanderId.endsWith('alphonse')?undefined:Object.keys(content.characters).slice(4);
+    const r=reunionStart(commanderId,party),{app}=await harness(r);
+    const gameplay=state=>({party:state.partyIds,results:state.trialResults,chapters:state.chapterProgress,visitOrder:state.visitOrder,information:state.acquiredInformation,theo:state.theoInvestigations});
+    const before=gameplay(r);
+    for(const stage of reunionStages) {
+      const current=app.state().run;
+      assert.equal(content.scenes[current.position.sceneId].reunionStage,stage);
+      assert.equal(engine.canManualSave(current,content),true);
+      const html=app.storyPage();assert.doesNotMatch(html,/「[^」]+」/);
+      if(stage==='parties') {
+        assert.equal((html.match(/class="member"/g)||[]).length,8);
+        const alphonse=commanderId.endsWith('alphonse')?current.partyIds:engine.getOpponentParty(current,content).map(c=>c.id);
+        const rosemond=commanderId.endsWith('rosemond')?current.partyIds:engine.getOpponentParty(current,content).map(c=>c.id);
+        const split=html.split('ローズモンドの一行');
+        for(const id of alphonse) assert.ok(split[0].includes(content.portraits[id].src));
+        for(const id of rosemond) assert.ok(split[1].includes(content.portraits[id].src));
+      }
+      if(stage==='comic') {assert.ok(html.includes(cg.src));assert.match(html,/拡大して読む/);assert.doesNotMatch(html,/dialogue-panel/);}
+      if(stage==='closing') assert.match(html,/旅を続ける/);
+      await app.handle('ack-page');assert.deepEqual(gameplay(app.state().run),before);
+    }
+    assert.equal(app.state().run.position.phase,'map');
+    assert.equal(app.state().run.storyEvents['event.midgame-reunion'].status,'completed');
+    assert.deepEqual(app.state().run.recentDialogueLog.slice(-4).map(b=>b.sceneId),reunionStages.map(s=>`prologue.reunion-comic.${s}`));
+    const after=app.state();await app.handle('ack-page');assert.deepEqual(app.state(),after);
+  }
+});
+
+test('comic-stage manual/auto saves, read-only review and a failed page write resume without duplicating completion',async()=>{
+  for(const commanderId of Object.keys(content.commanders)) {
+    const {app,storage}=await harness(reunionStart(commanderId));
+    for(const stage of reunionStages) {
+      const before=app.state().run;
+      await app.openSaves();await app.handle('save-slot','manual1');
+      // Later saves use the existing overwrite confirmation.
+      await app.handle('accept-confirm');
+      assert.deepEqual((await storage.getSlot('manual1')).run,before);
+      if(stage==='comic') {
+        const commit=storage.commitAuto;let writes=0;
+        storage.commitAuto=(...args)=>++writes===1?Promise.reject(new Error('comic save failure')):commit(...args);
+        await app.handle('ack-page');assert.equal(app.state().pending,true);
+        assert.deepEqual((await storage.getSlot('auto')).run,before);
+        await app.handle('retry');assert.equal(app.state().pending,false);assert.equal(writes,2);
+        storage.commitAuto=commit;
+      } else await app.handle('ack-page');
+      const after=app.state();
+      if(stage!=='closing') {
+        await app.handle('read-prev');
+        await app.handle('save-slot','manual1');assert.deepEqual((await storage.getSlot('manual1')).run,before);
+        await app.handle('read-forward');assert.deepEqual(app.state().run,after.run);assert.deepEqual(app.state().reader,after.reader);
+      }
+      await app.openSaves();await app.load('manual1');assert.deepEqual(app.state().run,before);
+      await app.handle('ack-page');assert.deepEqual(app.state().run,after.run);
+      assert.deepEqual((await storage.getSlot('auto')).run,after.run);
+    }
+    assert.equal(app.state().run.position.phase,'map');
+  }
+});
+
+test('pre-update saves at every visible original reunion block still validate and finish their original text sequence',()=>{
+  for(const commanderId of Object.keys(content.commanders)) {
+    const base=reunionStart(commanderId), ids=content.scenes['prologue.midgame-reunion'].blocks;
+    for(const [blockIndex,id] of ids.entries()) {
+      const b=content.textBlocks[id];if(!engine.evaluateCondition(b.condition,base,content))continue;
+      const r={...base,position:{...base.position,sceneId:'prologue.midgame-reunion',blockIndex}};
+      engine.validateRun(r,content);assert.equal(engine.getCurrentText(r,content).id,id);
+      const after=read(r);assert.equal(after.position.phase,'map');
+      assert.equal(after.storyEvents['event.midgame-reunion'].status,'completed');
+      assert.equal(after.recentDialogueLog.at(-1).sceneId,'prologue.midgame-reunion');
+    }
+  }
+});
+
 test('CG presentation leaves auto resume, page acknowledgement, read keys and the protagonist selection unchanged',async()=>{
   const withoutCg=structuredClone(content);delete withoutCg.scenes[content.introSceneId].eventCg;
   for(let blockIndex=3;blockIndex<=6;blockIndex++) {
