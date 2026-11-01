@@ -121,12 +121,19 @@ export function getCurrentTextPage(run, content) {
   if (!first) return [];
   const ids = blockIdsFor(run, content);
   const speakerId = first.speakerId || null;
+  const group = first.pageGroup;
+  let characters = first.text.length;
   const page = [first];
   for (let blockIndex = run.position.blockIndex + 1; blockIndex < ids.length; blockIndex++) {
     const candidate = getCurrentText({ ...run, position: { ...run.position, blockIndex } }, content);
     if (!candidate) continue;
-    if ((candidate.speakerId || null) !== speakerId) break;
+    if (candidate.pageBreakBefore) break;
+    if (group) {
+      if (candidate.pageGroup !== group || page.length >= 4 || first.text.length > 120 ||
+        candidate.text.length > 120 || characters + candidate.text.length > 220) break;
+    } else if (candidate.pageGroup || (candidate.speakerId || null) !== speakerId) break;
     page.push(candidate);
+    characters += candidate.text.length;
   }
   return page;
 }

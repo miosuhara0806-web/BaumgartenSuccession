@@ -258,3 +258,7 @@
 .prologue-draft .character-card { position:relative; }
 .prologue-draft .selected-mark { position:absolute; top:20px; right:20px; white-space:nowrap; }
 .full-portrait:has(img.image-unavailable) { aspect-ratio:2 / 3; }
+
+/* Short, explicitly grouped exchanges retain a speaker label for every turn. */
+.dialogue-turn + .dialogue-turn { margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+.dialogue-turn .dialogue-text { min-height:0; }

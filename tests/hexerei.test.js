@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { withApprovedHonorifics } from './helpers/approved-honorifics.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -65,7 +66,7 @@ test('all supplied novels, choices, results, reasons, conversations and memos ma
   const normalize = s => s.replaceAll('【主人公】', '{commander}');
   for (let i = 0; i < 3; i++) {
     const section = sections[i], row = manuscript.trials[i], trial = content.trials[`hexerei.${row.key}`];
-    const novel = section.match(/```text\n([\s\S]*?)\n```/)[1];
+    const novel = withApprovedHonorifics(section.match(/```text\n([\s\S]*?)\n```/)[1]);
     assert.equal(row.introduction, novel);
     const scene = content.scenes[trial.introductionSceneId];
     assert.equal(scene.presentation, 'novel');

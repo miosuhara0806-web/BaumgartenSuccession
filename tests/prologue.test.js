@@ -6,6 +6,9 @@ import { content } from '../src/content/prologue.js';
 import { content as previous } from '../src/content/companion-dialogue-unified.js';
 import { defaultContent, contentForRun } from '../src/content/catalog.js';
 import { manuscript } from '../src/content/prologue-manuscript.js';
+import { protagonistNarrationEdits, quantityEdits } from '../src/content/prologue-presentation.js';
+const copyEdits=[...protagonistNarrationEdits,...quantityEdits];
+const editedText=(id,text)=>copyEdits.filter(row=>row[0]===id).reduce((value,[,from,to])=>value.replaceAll(from,to),text);
 import * as engine from '../src/engine.js';
 import { createStorage, STORAGE_SCHEMA_VERSION } from '../src/storage.js';
 import { MemoryIndexedDB } from './helpers/memory-indexeddb.js';
@@ -18,11 +21,15 @@ const gameData = r => ({ chapterProgress: r.chapterProgress, trialResults: r.tri
   heardConversationIds: r.heardConversationIds, acquiredInformation: r.acquiredInformation, theoInvestigations: r.theoInvestigations, storyEvents: r.storyEvents });
 const roundtrip = r => { const copy = JSON.parse(JSON.stringify(r)); engine.validateRun(copy, contentForRun(copy)); assert.deepEqual(copy, r); return copy; };
 
-test('new default is isolated; all 15 trials, 5 cities, old blocks, conversations, memos, Theo and characters are unchanged', () => {
+test('new default preserves gameplay and historical blocks except audited display copy edits', () => {
   assert.equal(defaultContent, content);
   assert.equal(contentForRun(engine.createRun(previous)), previous);
   for (const key of ['characters', 'commanders', 'regions', 'trials', 'conversations', 'information', 'investigations']) assert.deepEqual(content[key], previous[key], key);
-  for (const key of ['textBlocks', 'scenes']) for (const [id, value] of Object.entries(previous[key])) assert.deepEqual(content[key][id], value, id);
+  for (const [id,value] of Object.entries(previous.scenes)) assert.deepEqual(content.scenes[id],value,id);
+  for (const [id,value] of Object.entries(previous.textBlocks)) {
+    const text=editedText(id,value.text);
+    assert.deepEqual(content.textBlocks[id],{...value,text,textRevision:value.textRevision+(text!==value.text?1:0)},id);
+  }
   for (const key of ['mode', 'partySelection', 'enforceChoiceScores', 'endingSceneId', 'finalChapterCompletion', 'completionNotice']) assert.deepEqual(content[key], previous[key], key);
   assert.deepEqual(Object.keys(content.storyEvents), [eventId]);
   assert.equal(STORAGE_SCHEMA_VERSION, 1); assert.equal(engine.createRun(content).schemaVersion, 1);
@@ -41,7 +48,7 @@ test('approved dialogue/narration and all eight introductions match the source, 
     assert.equal(manuscript[key].map(row => row.text).join('').replace(/\s/g, ''), text, key);
   }
   assert.deepEqual(content.scenes['prologue.court'].blocks.slice(0, manuscript.courtCommon.length)
-    .map(id => ({ text: content.textBlocks[id].text, speakerId: content.textBlocks[id].speakerId })), manuscript.courtCommon);
+    .map(id => ({ text: content.textBlocks[id].text, speakerId: content.textBlocks[id].speakerId })), manuscript.courtCommon.map((row,i)=>({...row,text:editedText(content.scenes['prologue.court'].blocks[i],row.text)})));
   for (const [id, p] of Object.entries(content.companionProfiles)) {
     const name = content.characters[id].name;
     const text = section(16).split(`### ${name}\n`)[1].split('\n### ')[0].trim();
@@ -57,7 +64,7 @@ test('approved dialogue/narration and all eight introductions match the source, 
       const expected = (section(n) + extra).match(/「[^」]*」/g).filter(text => text !== excludedReply);
       const actual = content.scenes[sceneId].blocks.map(id => content.textBlocks[id])
         .filter(b => b.speakerId && engine.evaluateCondition(b.condition, r, content));
-      assert.deepEqual(actual.map(b => b.text), expected, `${sceneId}/${commanderId}`);
+      assert.deepEqual(actual.map(b => b.text), expected.map((text,i)=>editedText(actual[i].id,text)), `${sceneId}/${commanderId}`);
       assert.ok(actual.some(b => b.speakerId === commanderId));
     }
   }
@@ -199,7 +206,8 @@ test('2nd city closing is completely read and committed before reunion; no map o
       assert.ok(!b.speakerId || b.speakerId.startsWith('commander.'));
       r = act(roundtrip(r), 'ACK_TEXT');
     }
-    assert.deepEqual(seen, manuscript[commanderId.endsWith('alphonse') ? 'reunionAlphonse' : 'reunionRosemond'].map(row => row.text));
+    const offset=commanderId.endsWith('alphonse')?0:manuscript.reunionAlphonse.length;
+    assert.deepEqual(seen, manuscript[commanderId.endsWith('alphonse') ? 'reunionAlphonse' : 'reunionRosemond'].map((row,i)=>editedText(content.scenes['prologue.midgame-reunion'].blocks[offset+i],row.text)));
     assert.equal(r.position.phase, 'map'); assert.equal(r.storyEvents[eventId].status, 'completed');
     assert.deepEqual(gameData(r), { ...unchanged, storyEvents: { [eventId]: { status: 'completed' } } });
     assert.deepEqual(act(roundtrip(r), 'RETURN_MAP'), r);

@@ -1,6 +1,7 @@
 // New-run content only: all historical packs and city definitions stay intact.
 import { content as previous } from './companion-dialogue-unified.js';
 import { companionProfiles, portraits, manuscript } from './prologue-manuscript.js';
+import { applyPrologueCopyEdits, applyDialoguePageGroups } from './prologue-presentation.js';
 
 export function createPrologueContent() {
   const content = structuredClone(previous);
@@ -68,6 +69,8 @@ export function createPrologueContent() {
       ...variant(manuscript.reunionRosemond, 'commander.rosemond'),
     ]),
   };
+  applyPrologueCopyEdits(content);
+  applyDialoguePageGroups(content);
   return content;
 }
 export const content = createPrologueContent();

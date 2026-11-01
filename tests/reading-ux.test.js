@@ -23,5 +23,6 @@ test('監督官の主人公への直接呼びかけは敬称付きで出力さ�
   const respectful=Object.values(content.textBlocks)
     .filter(block=>block.text.includes('{commander}様'))
     .map(block=>block.id);
-  assert.ok(respectful.length>=6);
+  assert.equal(respectful.length,4);
+  assert.equal(respectful.reduce((sum,id)=>sum+(content.textBlocks[id].text.match(/\{commander\}様/g)||[]).length,0),6);
 });

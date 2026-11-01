@@ -1,0 +1,282 @@
+// Reviewed display edits for the unpublished prologue edition only.
+// Keep historical manuscript packs and gameplay definitions unchanged.
+export const protagonistNarrationEdits = [
+  [
+    "text.choice.anchoring.small1.a.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.small1.b.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.small1.c.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.small2.a.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.small2.b.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.small2.c.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.major.a.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.major.b.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.anchoring.major.c.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.rude.small1.a.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.rude.small1.b.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.choice.rude.small1.c.feedback",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.prologue.departure.4",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.prologue.departure.12",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.prologue.departure.22",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.prologue.departure.30",
+    "主人公",
+    "{commander}"
+  ],
+  [
+    "text.prologue.court.1",
+    "主人公",
+    "{commander}"
+  ]
+];
+export const quantityEdits = [
+  [
+    "text.choice.alba.small2.c.feedback.final",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.hexerei.small1.introduction",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.anchoring.small1.introduction",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.anchoring.major.introduction",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.rude.small1.introduction",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.choice.rude.small1.a.feedback",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.rude.small2.introduction",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.ehrenfels.major.introduction",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.prologue.declaration.3",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.prologue.tutorial.after.17",
+    "四名",
+    "4名"
+  ],
+  [
+    "text.prologue.tutorial.after.18",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.tutorial.after.19",
+    "八名",
+    "8名"
+  ],
+  [
+    "text.prologue.tutorial.after.21",
+    "八名",
+    "8名"
+  ],
+  [
+    "text.prologue.tutorial.after.21",
+    "二つの陣営",
+    "2つの陣営"
+  ],
+  [
+    "text.prologue.tutorial.after.43",
+    "四名",
+    "4名"
+  ],
+  [
+    "text.prologue.tutorial.after.44",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.tutorial.after.45",
+    "八名",
+    "8名"
+  ],
+  [
+    "text.prologue.tutorial.after.47",
+    "八名",
+    "8名"
+  ],
+  [
+    "text.prologue.tutorial.after.47",
+    "二つの陣営",
+    "2つの陣営"
+  ],
+  [
+    "text.prologue.departure.4",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.departure.22",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.court.8",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.court.24",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.midgame-reunion.1",
+    "二つ目の都市",
+    "2つ目の都市"
+  ],
+  [
+    "text.prologue.midgame-reunion.7",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.midgame-reunion.13",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.midgame-reunion.51",
+    "二つの一行",
+    "2つの一行"
+  ],
+  [
+    "text.prologue.midgame-reunion.52",
+    "二人",
+    "2人"
+  ],
+  [
+    "text.prologue.midgame-reunion.53",
+    "二つ目の都市",
+    "2つ目の都市"
+  ],
+  [
+    "text.prologue.midgame-reunion.60",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.midgame-reunion.68",
+    "四人",
+    "4人"
+  ],
+  [
+    "text.prologue.midgame-reunion.113",
+    "二つの一行",
+    "2つの一行"
+  ]
+];
+
+export function applyPrologueCopyEdits(content) {
+  const changed = new Set();
+  for (const [id, from, to] of [...protagonistNarrationEdits, ...quantityEdits]) {
+    const block = content.textBlocks[id];
+    if (!block?.text.includes(from)) throw new Error(`Reviewed copy edit no longer matches: ${id} / ${from}`);
+    block.text = block.text.replaceAll(from, to);
+    changed.add(id);
+  }
+  for (const id of changed) content.textBlocks[id].textRevision++;
+}
+
+// Explicit dramatic beats. Each group stays in its scene and protagonist branch.
+export const dialoguePageGroups = {
+  'prologue.declaration': [[4, 5, 6, 7]],
+  'prologue.tutorial.after': [[17, 18, 19, 20], [21, 22], [43, 44, 45, 46], [47, 48]],
+  'prologue.court': [[12, 13, 14, 15], [16, 17, 18], [19, 20, 21, 22],
+    [28, 29, 30, 31], [32, 33, 34, 35], [37, 38, 39, 40]],
+  'prologue.departure': [[6, 7], [24, 25]],
+};
+export function applyDialoguePageGroups(content) {
+  for (const [sceneId, groups] of Object.entries(dialoguePageGroups)) {
+    for (const [index, ordinals] of groups.entries()) {
+      for (const ordinal of ordinals) {
+        const id = content.scenes[sceneId]?.blocks[ordinal - 1];
+        if (!content.textBlocks[id]) throw new Error(`Unknown dialogue page block: ${sceneId}/${ordinal}`);
+        content.textBlocks[id].pageGroup = `${sceneId}.page.${index + 1}`;
+      }
+    }
+  }
+}

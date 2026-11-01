@@ -154,7 +154,7 @@ function treeArt() {
   return '<img class="kingdom-emblem" src="./src/assets/kingdom-emblem.svg" width="360" height="420" alt="" aria-hidden="true">';
 }
 function titlePage() {
-  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">ふたりの指揮官、八人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}</nav>${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">${content.prologue?'王国を巡る、ふたりの継承戦':'第一の訪問地　アルバ'}</div></div></main>`;
+  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">2人の指揮官、8人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}</nav>${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">${content.prologue?'王国を巡る、ふたりの継承戦':'第一の訪問地　アルバ'}</div></div></main>`;
 }
 function pageHeading(kicker, heading, body='', actions='') {
   return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${heading}</h1>${body?`<p class="muted small">${body}</p>`:''}</div>${actions?`<div class="button-row">${actions}</div>`:''}</div>`;
@@ -171,15 +171,15 @@ function roleCounts() {
   return counts;
 }
 function draftPage() {
-  if (content.prologue) return `<main class="page prologue-draft">${pageHeading('王国を見るための同行者','同行者を4人選んでください','同行者は新しい視点や情報を伝えます。追加案や意見が常に最善とは限りません。最後に判断するのは主人公自身です。')}<div class="draft-toolbar"><div class="role-counts"><span>選択中 <b>${run.partyIds.length} / 4</b></span></div>${button('この4人で旅立つ','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'','primary')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}の詳細${run.partyIds.includes(c.id)?'・選択中':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><p class="small muted">出身：${esc(regionName(c.originRegionId))}</p><p class="small">${esc(content.companionProfiles[c.id].summary)}</p><span class="text-button small">詳しく見る</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">選択中</span>':''}</div></button>`).join('')}</div><p class="small muted">選ばなかった四人は、もう一方の候補と旅をします。旅の途中で同行者を変更することはできません。</p></main>`;
+  if (content.prologue) return `<main class="page prologue-draft">${pageHeading('王国を見るための同行者','同行者を4人選んでください','同行者は新しい視点や情報を伝えます。追加案や意見が常に最善とは限りません。最後に判断するのは主人公自身です。')}<div class="draft-toolbar"><div class="role-counts"><span>選択中 <b>${run.partyIds.length} / 4</b></span></div>${button('この4人で旅立つ','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'','primary')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}の詳細${run.partyIds.includes(c.id)?'・選択中':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><p class="small muted">出身：${esc(regionName(c.originRegionId))}</p><p class="small">${esc(content.companionProfiles[c.id].summary)}</p><span class="text-button small">詳しく見る</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">選択中</span>':''}</div></button>`).join('')}</div><p class="small muted">選ばなかった4人は、もう一方の候補と旅をします。旅の途中で同行者を変更することはできません。</p></main>`;
   const counts=roleCounts();
-  return `<main class="page">${stepStrip(1)}${pageHeading('固定パーティの選抜','四人の同行者を選ぶ','カードをタップして人物を知り、詳細の「選ぶ」で編成します。枠が埋まったら、先に選んだ人物を外してください。')}<div class="draft-toolbar"><div class="role-counts">${content.partySelection === 'free' ? `<span>同行者<b>${run.partyIds.length} / 4</b></span><span>8人から自由に選択</span>` : Object.entries(roles).map(([id,label])=>`<span>${label}<b>${counts[id]} / ${id==='melee'?2:1}</b></span>`).join('')}</div>${button('両陣営を確認 →','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}のプロフィール${run.partyIds.includes(c.id)?'・選択済み':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><span class="role">${roles[c.role]} / ${c.age}歳</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">同行</span>':''}</div></button>`).join('')}</div><p class="small muted" style="margin-top:22px">選ばれなかった四人は、もう一方の指揮官と旅立ちます。出発後は同行者を変更できません。</p></main>`;
+  return `<main class="page">${stepStrip(1)}${pageHeading('固定パーティの選抜','4人の同行者を選ぶ','カードをタップして人物を知り、詳細の「選ぶ」で編成します。枠が埋まったら、先に選んだ人物を外してください。')}<div class="draft-toolbar"><div class="role-counts">${content.partySelection === 'free' ? `<span>同行者<b>${run.partyIds.length} / 4</b></span><span>8人から自由に選択</span>` : Object.entries(roles).map(([id,label])=>`<span>${label}<b>${counts[id]} / ${id==='melee'?2:1}</b></span>`).join('')}</div>${button('両陣営を確認 →','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}のプロフィール${run.partyIds.includes(c.id)?'・選択済み':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><span class="role">${roles[c.role]} / ${c.age}歳</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">同行</span>':''}</div></button>`).join('')}</div><p class="small muted" style="margin-top:22px">選ばれなかった4人は、もう一方の指揮官と旅立ちます。出発後は同行者を変更できません。</p></main>`;
 }
 function campPage() {
-  if (content.prologue) return `<main class="page">${pageHeading('同行者の最終確認','同行者はこちらの4名でよろしいですか？','この四名と共に、王国各地を巡ります。旅の途中で同行者を変更することはできません。')}<div class="confirmation-grid">${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<article class="panel">${portrait(c)}<h2>${esc(c.name)}</h2></article>`).join('')}</div><div class="button-row end">${button('選び直す','back-draft')}${button('この4人に決定する','depart','','primary')}</div></main>`;
+  if (content.prologue) return `<main class="page">${pageHeading('同行者の最終確認','同行者はこちらの4名でよろしいですか？','この4名と共に、王国各地を巡ります。旅の途中で同行者を変更することはできません。')}<div class="confirmation-grid">${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<article class="panel">${portrait(c)}<h2>${esc(c.name)}</h2></article>`).join('')}</div><div class="button-row end">${button('選び直す','back-draft')}${button('この4人に決定する','depart','','primary')}</div></main>`;
   const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
   const camp=(label,leader,members)=>`<section class="panel"><p class="eyebrow">${label}</p><h2>${esc(leader.name)}</h2>${members.map(c=>`<div class="member-row">${member(c)}</div>`).join('')}</section>`;
-  return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認',content.partySelection === 'free' ? '選んだ四人と、残り四人がそれぞれの陣営になります。同行者はこの周回で固定です。' : 'それぞれ近接二人、遠隔一人、回復一人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
+  return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認',content.partySelection === 'free' ? '選んだ4人と、残り4人がそれぞれの陣営になります。同行者はこの周回で固定です。' : 'それぞれ近接2人、遠隔1人、回復1人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
 }
 function mapArt() {
   const image='./src/assets/kingdom-map.png';
@@ -214,8 +214,11 @@ function dialoguePanel(blocks) {
   const someRead=page.some(block=>reader.readTextKeys.includes(block.readKey));
   const preview=readingPreviewIndex!==null;
   const nextAction=preview?'read-forward':'ack-page';
-  const text=page.map(block=>esc(block.text)).join('<br><br>');
-  return `<section class="dialogue-panel"><div class="speaker">${esc(nameOf(page[0]?.speakerId))}</div><div class="dialogue-text">${text}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button type="button" class="button" data-action="read-prev" ${!canReadPrevious()?'disabled':''}>← 前へ</button><button class="text-button small" data-action="skip" ${preview||!allRead?'disabled':''}>既読スキップ</button>${button('次へ →',nextAction,'','primary')}</div></div></section>`;
+  const multipleSpeakers=new Set(page.map(block=>block.speakerId || null)).size>1;
+  const text=multipleSpeakers
+    ? `<div class="dialogue-turns">${page.map(block=>`<div class="dialogue-turn"><div class="speaker">${esc(nameOf(block.speakerId))}</div><div class="dialogue-text">${esc(block.text)}</div></div>`).join('')}</div>`
+    : `<div class="speaker">${esc(nameOf(page[0]?.speakerId))}</div><div class="dialogue-text">${page.map(block=>esc(block.text)).join('<br><br>')}</div>`;
+  return `<section class="dialogue-panel">${text}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button type="button" class="button" data-action="read-prev" ${!canReadPrevious()?'disabled':''}>← 前へ</button><button class="text-button small" data-action="skip" ${preview||!allRead?'disabled':''}>既読スキップ</button>${button('次へ →',nextAction,'','primary')}</div></div></section>`;
 }
 function conversationBlocks(startIndex=0) {
   const p=run?.position;
@@ -248,7 +251,7 @@ function assignments(choice) {
 function choicesPanel() {
   const trial=content.trials[run.position.trialId];
   const back=previousReadingButton();
-  return `<section>${back?`<div class="button-row" style="margin-bottom:14px">${back}</div>`:''}<div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'三つの作戦は、いずれも四人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
+  return `<section>${back?`<div class="button-row" style="margin-bottom:14px">${back}</div>`:''}<div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'3つの作戦は、いずれも4人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
 }
 function trialPage() {
   const p=run.position;
@@ -454,7 +457,7 @@ async function transact(work, {after,message}={}) {
   } finally { busy=false; render(); }
 }
 async function perform(action) {
-  if(busy||pending) return;
+  if(busy||pending||readingPreviewIndex!==null) return;
   const oldPhase=run.position.phase;
   const oldScene=run.position.sceneId;
   const page=action.type==='ACK_PAGE'?getCurrentTextPage(run,content):[];
@@ -500,7 +503,7 @@ async function load(id) {
   modal=null;
   const expectedRevision=slotsRevision;
   await transact(()=>storage.loadSlot(id,{expectedRevision}),
-    {after:result=>{content=contentForRun(result.run);run=result.run;title=false;},message:'保存した地点から再開しました。'});
+    {after:result=>{content=contentForRun(result.run);run=result.run;title=false;readingSession='';syncReadingSession();},message:'保存した地点から再開しました。'});
 }
 async function openSaves() {
   try { await refreshSlots(); modal=savesModal(); render(); }
@@ -514,7 +517,7 @@ async function startNew() {
     {after:()=>{content=defaultContent;run=next;title=false;},message:'新しい旅を記録しました。'});
 }
 async function skipRead() {
-  if(busy||pending) return;
+  if(busy||pending||readingPreviewIndex!==null) return;
   const conversation=conversationBlocks(run.position.blockIndex);
   if(conversation.length) {
     if(conversation.every(block=>reader.readTextKeys.includes(block.readKey))) await perform({type:'ACK_CONVERSATION'});
@@ -545,7 +548,7 @@ async function handle(action,id) {
     case 'ack-conversation': await perform({type:'ACK_CONVERSATION'}); break;
     case 'new':
       await refreshSlots();
-      if(slots.auto) confirmDialog('新しい旅をはじめる','<p>現在のオートセーブを、新しい周回で置き換えます。</p><p class="small muted">手動セーブ三枠、周回をまたぐ既読、王国史は保持されます。</p>',startNew,'新しい旅をはじめる');
+      if(slots.auto) confirmDialog('新しい旅をはじめる','<p>現在のオートセーブを、新しい周回で置き換えます。</p><p class="small muted">手動セーブ3枠、周回をまたぐ既読、王国史は保持されます。</p>',startNew,'新しい旅をはじめる');
       else await startNew();
       break;
     case 'continue':
