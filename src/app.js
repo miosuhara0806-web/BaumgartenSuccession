@@ -288,7 +288,7 @@ function storyPage() {
     const parties=showParties?`<div class="camp-grid story-parties"><section class="panel"><h3>${esc(nameOf(run.commanderId))}の一行</h3>${run.partyIds.map(id=>member(character(id))).join('')}</section><section class="panel"><h3>${esc(rival.name)}の一行</h3>${getOpponentParty(run,content).map(member).join('')}</section></div>`:'';
     return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${block?dialoguePanel(page):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
   }
-  return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(block):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
+  return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(page):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
 }
 function tutorialPage() {
   const p=run.position, t=run.tutorial;
