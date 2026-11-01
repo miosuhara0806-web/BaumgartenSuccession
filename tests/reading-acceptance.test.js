@@ -5,10 +5,10 @@ import { readFile } from 'node:fs/promises';
 import * as engine from '../src/engine.js';
 import { content, createPrologueContent } from '../src/content/prologue.js';
 import { contentForRun } from '../src/content/catalog.js';
-import { protagonistNarrationEdits, quantityEdits, dialoguePageGroups } from '../src/content/prologue-presentation.js';
+import { protagonistNarrationEdits, quantityEdits, dialoguePageGroups, rosemondTutorialEdits } from '../src/content/prologue-presentation.js';
 import { createStorage } from '../src/storage.js';
 import { MemoryIndexedDB } from './helpers/memory-indexeddb.js';
-import { start, read, act } from './helpers/prologue.js';
+import { start, read, act, tutorial, finishCity } from './helpers/prologue.js';
 
 const source=(await readFile(new URL('../src/app.js',import.meta.url),'utf8'))
   .replace(/^import[\s\S]*?;\r?\n/gm,'').replace(/await init\(\);\s*$/,'');
@@ -26,7 +26,7 @@ async function harness(snapshot,pack=content) {
       state(){return structuredClone({run,reader,revision,pending:!!pending,readingPreviewIndex,history:readingHistory.length});},
       previewPage(){return getCurrentTextPage(readingPreviewIndex===null?run:readingHistory[readingPreviewIndex],content);},
       panel(){return dialoguePanel(getCurrentTextPage(run,content));},
-      handle,perform,trialSidebar,load,openSaves
+      handle,perform,trialSidebar,load,openSaves,faceIcon,speakerLabel,member
     };
   `).runInContext(context);
   context.api.initialize(snapshot,saved);
@@ -101,13 +101,93 @@ test('each explicit dramatic page has 2–4 labeled turns and stays within one s
         index=content.scenes[sceneId].blocks.indexOf(page.at(-1).id)+1;
       }
     }
-    assert.equal(mixed,7);
+    assert.equal(mixed,8);
   }
   const r=atBlock('prologue.court',11,'commander.alphonse');
   const {app}=await harness(r);const html=app.panel();
   assert.equal((html.match(/class="dialogue-turn"/g)||[]).length,4);
-  assert.equal((html.match(/class="speaker">ローズモンド/g)||[]).length,2);
-  assert.equal((html.match(/class="speaker">アルフォンス/g)||[]).length,2);
+  assert.equal((html.match(/<span>ローズモンド<\/span>/g)||[]).length,2);
+  assert.equal((html.match(/<span>アルフォンス<\/span>/g)||[]).length,2);
+});
+
+test('shared face labels cover both commanders, the king, all companions and Theo without embedding images in saves',async()=>{
+  const r=start(),{app}=await harness(r);
+  for(const id of [...Object.keys(content.commanders),...Object.keys(content.characters),'support.theo']) {
+    const icon=app.faceIcon(id);
+    assert.match(icon,/<img src="\.\/src\/assets\/portraits\//,id);
+    assert.match(icon,/aria-hidden="true"/);
+    assert.match(icon,/alt=""/);
+    assert.match(app.speakerLabel(id),new RegExp(`<span>${(content.characters[id]||content.commanders[id]||content.speakers[id]).name}</span>`));
+  }
+  assert.match(app.faceIcon('support.king'),/emblem-icon.*kingdom-emblem\.svg/);
+  assert.equal(app.faceIcon('support.overseer'),'');
+  for(const c of Object.values(content.characters)) {
+    assert.match(app.member(c),new RegExp(content.portraits[c.id].src.replaceAll('.','\\.')));
+    assert.doesNotMatch(app.member(c),/member-avatar/);
+  }
+  assert.deepEqual(app.state().run,r);
+  assert.doesNotMatch(JSON.stringify(app.state().run),/data:image|\.png|portrait/);
+});
+
+test('both short pauses stay between their adjacent speeches and resume from every saved block without replay',async()=>{
+  for(const [sceneId,commanderId,firstOrdinal] of [
+    ['prologue.court','commander.rosemond',35],
+    ['prologue.midgame-reunion','commander.alphonse',44],
+  ]) {
+    let base=start(undefined,commanderId);
+    if(sceneId.endsWith('reunion')) base=finishCity(finishCity(base,'alba'),'hexerei',{stopBeforeClosing:true});
+    const ids=content.scenes[sceneId].blocks.slice(firstOrdinal-1,firstOrdinal+2);
+    for(let offset=0;offset<3;offset++) {
+      const r={...base,position:{...base.position,sceneId,blockIndex:firstOrdinal-1+offset}};
+      if(sceneId.endsWith('court')) r.position={phase:'departure',sceneId,blockIndex:firstOrdinal-1+offset};
+      const {app,storage}=await harness(r), before=app.state();
+      const shown=engine.getCurrentTextPage(r,content);
+      assert.deepEqual(shown.map(b=>b.id),ids.slice(offset));
+      assert.ok(shown.length>1||offset===2);
+      if(offset<2) {
+        const html=app.panel();
+        assert.match(html,/narration-turn/);assert.doesNotMatch(html,/>記録</);
+      }
+      await app.handle('ack-page');
+      const after=app.state(), saved=(await storage.getSlot('auto')).run;
+      assert.deepEqual(saved,after.run);
+      assert.deepEqual(after.run.trialResults,before.run.trialResults);
+      assert.deepEqual(after.run.recentDialogueLog.slice(-shown.length).map(b=>b.textId),ids.slice(offset));
+      for(const b of shown) assert.equal(after.reader.readTextKeys.filter(key=>key===b.readKey).length,1);
+      await app.handle('read-prev');await app.handle('read-forward');
+      assert.deepEqual(app.state().run,after.run);assert.deepEqual(app.state().reader,after.reader);
+      assert.equal(app.state().revision,after.revision);
+      await storage.saveManual('manual1',r,{expectedRevision:await storage.getRevision()});
+      await app.openSaves();await app.load('manual1');assert.deepEqual(app.state().run,r);
+    }
+  }
+});
+
+test('tutorial success keeps Alphonse copy and read keys, revises only Rosemond and preserves saved logs',async()=>{
+  const old=createPrologueContent();
+  for(const [id,from,to]of rosemondTutorialEdits) {
+    assert.equal(content.textBlocks[id].text,to);assert.equal(content.textBlocks[id].textRevision,2);
+    old.textBlocks[id].text=from;old.textBlocks[id].textRevision=1;
+  }
+  for(const commanderId of Object.keys(content.commanders)) {
+    let r=tutorial(commanderId);
+    for(const locationId of ['warehouse','servants','preparation']) r=read(act(r,'INSPECT_TUTORIAL_LOCATION',{locationId}));
+    r=act(r,'DECIDE_TUTORIAL',{choiceId:'b'});
+    const original=engine.getCurrentTextPage(r,old), revised=engine.getCurrentTextPage(r,content);
+    assert.equal(revised.length,4);
+    if(commanderId.endsWith('alphonse')) assert.deepEqual(revised,original);
+    else {
+      assert.deepEqual(revised.map(b=>b.text),rosemondTutorialEdits.map(row=>row[2]));
+      assert.ok(revised.every((b,i)=>b.readKey!==original[i].readKey));
+    }
+    // A pre-update log entry remains verbatim when resuming the same content version.
+    r=act(r,'ACK_TEXT',{},old);
+    const logged=structuredClone(r.recentDialogueLog);
+    const {app,storage}=await harness(r);
+    await app.handle('ack-page');
+    assert.deepEqual(app.state().run.recentDialogueLog.slice(0,logged.length),logged);
+    assert.deepEqual((await storage.getSlot('auto')).run,app.state().run);
+  }
 });
 
 test('long turns, explicit breaks, scene changes, and normal novels remain separate',()=>{

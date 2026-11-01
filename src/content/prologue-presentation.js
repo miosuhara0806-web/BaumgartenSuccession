@@ -250,9 +250,16 @@ export const quantityEdits = [
   ]
 ];
 
+export const rosemondTutorialEdits = [
+  ['text.prologue.tutorial.success.5', '「西棟だ」', '「西棟ですね」'],
+  ['text.prologue.tutorial.success.6', '「倉庫から西棟までは運ばれている」', '「倉庫から西棟までは運ばれています」'],
+  ['text.prologue.tutorial.success.7', '「だが、そこから式典準備室へ届ける指示が伝わっていない」', '「ですが、そこから式典準備室へ届ける指示が伝わっていません」'],
+  ['text.prologue.tutorial.success.8', '「なら、西棟の保管場所で止まっているはずだ」', '「それなら、西棟の保管場所で止まっているはずです」'],
+];
+
 export function applyPrologueCopyEdits(content) {
   const changed = new Set();
-  for (const [id, from, to] of [...protagonistNarrationEdits, ...quantityEdits]) {
+  for (const [id, from, to] of [...protagonistNarrationEdits, ...quantityEdits, ...rosemondTutorialEdits]) {
     const block = content.textBlocks[id];
     if (!block?.text.includes(from)) throw new Error(`Reviewed copy edit no longer matches: ${id} / ${from}`);
     block.text = block.text.replaceAll(from, to);
@@ -266,8 +273,9 @@ export const dialoguePageGroups = {
   'prologue.declaration': [[4, 5, 6, 7]],
   'prologue.tutorial.after': [[17, 18, 19, 20], [21, 22], [43, 44, 45, 46], [47, 48]],
   'prologue.court': [[12, 13, 14, 15], [16, 17, 18], [19, 20, 21, 22],
-    [28, 29, 30, 31], [32, 33, 34, 35], [37, 38, 39, 40]],
+    [28, 29, 30, 31], [32, 33, 34], [35, 36, 37], [38, 39, 40]],
   'prologue.departure': [[6, 7], [24, 25]],
+  'prologue.midgame-reunion': [[44, 45, 46]],
 };
 export function applyDialoguePageGroups(content) {
   for (const [sceneId, groups] of Object.entries(dialoguePageGroups)) {

@@ -130,8 +130,22 @@ function portrait(person, cls='') {
   }
   return `<div class="portrait ${cls}" aria-label="${esc(person.name)}の仮画像枠"><span aria-hidden="true">${esc(person.name.slice(0,1))}</span><small>肖像 準備中</small></div>`;
 }
+// Shared by dialogue labels and rosters, including future ensemble conversations.
+function faceIcon(id) {
+  const fixed = {
+    'commander.alphonse': {src:'./src/assets/portraits/commander-alphonse.png', commander:true},
+    'commander.rosemond': {src:'./src/assets/portraits/commander-rosemond.png', commander:true},
+    'support.king': {src:'./src/assets/kingdom-emblem.svg', emblem:true},
+  };
+  const asset=content.portraits?.[id] || defaultContent.portraits?.[id] || fixed[id];
+  if(!asset) return '';
+  return `<span class="face-icon${asset.emblem?' emblem-icon':asset.commander?' commander-icon':''}" aria-hidden="true"><img src="${esc(asset.src)}" alt=""></span>`;
+}
+function speakerLabel(id) {
+  return `<div class="speaker">${faceIcon(id)}<span>${esc(nameOf(id))}</span></div>`;
+}
 function member(person) {
-  return `<div class="member"><span class="member-avatar" aria-hidden="true">${esc(person.name.slice(0,1))}</span><span>${esc(person.name)}</span></div>`;
+  return `<div class="member">${faceIcon(person.id)}<span>${esc(person.name)}</span></div>`;
 }
 function notify(message) {
   toast=message;
@@ -201,7 +215,7 @@ function mapPage() {
   return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav></section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
 }
 function conversationButtons() {
-  return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}"><span class="member-avatar" aria-hidden="true">${esc(nameOf(c.participantIds[0]).slice(0,1))}</span><span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');
+  return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}">${faceIcon(c.participantIds[0])}<span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');
 }
 function trialSidebar() {
   if(readingPreviewIndex!==null) return '<aside class="trial-sidebar"><section class="panel"><h3>読み返し中</h3><p class="small muted">「次へ」で現在の進行へ戻れます。読み返し中は進行操作を行いません。</p></section></aside>';
@@ -216,8 +230,8 @@ function dialoguePanel(blocks) {
   const nextAction=preview?'read-forward':'ack-page';
   const multipleSpeakers=new Set(page.map(block=>block.speakerId || null)).size>1;
   const text=multipleSpeakers
-    ? `<div class="dialogue-turns">${page.map(block=>`<div class="dialogue-turn"><div class="speaker">${esc(nameOf(block.speakerId))}</div><div class="dialogue-text">${esc(block.text)}</div></div>`).join('')}</div>`
-    : `<div class="speaker">${esc(nameOf(page[0]?.speakerId))}</div><div class="dialogue-text">${page.map(block=>esc(block.text)).join('<br><br>')}</div>`;
+    ? `<div class="dialogue-turns">${page.map(block=>`<div class="dialogue-turn${block.speakerId?'':' narration-turn'}">${block.speakerId?speakerLabel(block.speakerId):''}<div class="dialogue-text">${esc(block.text)}</div></div>`).join('')}</div>`
+    : `${page[0]?.speakerId?speakerLabel(page[0].speakerId):''}<div class="dialogue-text">${page.map(block=>esc(block.text)).join('<br><br>')}</div>`;
   return `<section class="dialogue-panel">${text}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button type="button" class="button" data-action="read-prev" ${!canReadPrevious()?'disabled':''}>← 前へ</button><button class="text-button small" data-action="skip" ${preview||!allRead?'disabled':''}>既読スキップ</button>${button('次へ →',nextAction,'','primary')}</div></div></section>`;
 }
 function conversationBlocks(startIndex=0) {
@@ -239,7 +253,7 @@ function conversationPanel() {
   const paragraphs=blocks.map(block=>manuscript
     ? `<p class="${block.speakerId?'speech':'narration'}" aria-label="${block.speakerId?esc(nameOf(block.speakerId))+'の台詞':'地の文'}">${esc(block.text)}</p>`
     : `<p>${esc(companionSpeechText(block.text))}</p>`).join('');
-  return `<section class="dialogue-panel"><div class="speaker">${esc(speaker)}</div>${manuscript?`<h2 class="conversation-title">${esc(conversation.title)}</h2>`:''}<div class="dialogue-text conversation-text${manuscript?' manuscript-text':''}" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${paragraphs}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
+  return `<section class="dialogue-panel">${speakerLabel(manuscript?conversation.participantIds[0]:blocks[0].speakerId)}${manuscript?`<h2 class="conversation-title">${esc(conversation.title)}</h2>`:''}<div class="dialogue-text conversation-text${manuscript?' manuscript-text':''}" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${paragraphs}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
 }
 function companionSpeechText(text) {
   return text.startsWith('「') && text.endsWith('」') ? text.slice(1,-1) : text;
@@ -612,7 +626,7 @@ async function handle(action,id) {
   }
 }
 app.addEventListener('error', event=>{
-  if (event.target.matches?.('.official-portrait img')) event.target.classList.add('image-unavailable');
+  if (event.target.matches?.('.official-portrait img, .face-icon img')) event.target.classList.add('image-unavailable');
 }, true);
 app.addEventListener('click', event=>{
   const target=event.target.closest('button[data-action]');

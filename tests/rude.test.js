@@ -320,7 +320,7 @@ test('a partially read conversation cannot skip its unread tail, and the narrati
   r=act(r,'ACK_TEXT');
   const {app}=await harness(r,[first.readKey]);
   const html=app.trialPage();
-  assert.ok(html.includes('<div class="speaker">オリヴェル</div>'));
+  assert.match(html, /<div class="speaker">[\s\S]*?<span>オリヴェル<\/span><\/div>/);
   assert.ok(html.includes('aria-label="地の文"'));
   assert.ok(html.includes('aria-label="オリヴェルの台詞"'));
   const before=app.state(); await app.handle('skip'); assert.deepEqual(app.state(),before);

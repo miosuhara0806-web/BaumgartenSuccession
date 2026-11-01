@@ -260,5 +260,14 @@
 .full-portrait:has(img.image-unavailable) { aspect-ratio:2 / 3; }
 
 /* Short, explicitly grouped exchanges retain a speaker label for every turn. */
-.dialogue-turn + .dialogue-turn { margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+.dialogue-turn + .dialogue-turn { margin-top:12px; }
+.dialogue-panel .speaker { margin-bottom:6px; }
+.dialogue-panel .speaker::before { content:none; }
 .dialogue-turn .dialogue-text { min-height:0; }
+.narration-turn .dialogue-text { font-size:.94rem; color:var(--muted); }
+.face-icon { display:inline-block; position:relative; flex:0 0 auto; width:36px; height:36px; overflow:hidden; border-radius:50%; background:var(--wash); }
+.face-icon img { position:absolute; width:300%; max-width:none; height:auto; left:50%; top:0; transform:translateX(-50%); }
+.commander-icon img { width:160%; }
+.emblem-icon img { width:100%; height:100%; object-fit:contain; padding:3px; }
+.face-icon img.image-unavailable { display:none; }
+@media(max-width:760px) { .face-icon { width:32px; height:32px; } }

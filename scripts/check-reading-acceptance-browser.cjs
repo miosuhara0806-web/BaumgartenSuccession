@@ -7,7 +7,7 @@ const path = require('node:path');
   const {content}=await import('../src/content/prologue.js');
   const h=await import('../tests/helpers/prologue.js');
   const e=await import('../src/engine.js');
-  const out=path.resolve(process.env.READING_BROWSER_OUTPUT||'../preview/reading-acceptance-20261101/browser');
+  const out=path.resolve(process.env.READING_BROWSER_OUTPUT||'../preview/dialogue-icons-20261101/browser');
   const url=process.env.READING_BROWSER_URL||'http://127.0.0.1:4173/';
   await mkdir(out,{recursive:true});
   const report={url,scenarios:[],errors:[]};
@@ -39,6 +39,11 @@ const path = require('node:path');
   }
   async function read(page){
     for(let i=0;await page.locator(q('ack-page')).count();i++){
+      if((await page.locator('.dialogue-panel').textContent()).includes('少し間を置く。')) {
+        assert.equal(await page.locator('.narration-turn').count(),1);
+        assert.ok(await page.locator('.dialogue-turn').count()>=2);
+        assert.equal(await page.locator('.narration-turn .speaker').count(),0);
+      }
       assert.ok(i<250);await click(page,'ack-page');
     }
   }
@@ -51,34 +56,68 @@ const path = require('node:path');
     const box=await page.evaluate(()=>({w:innerWidth,s:document.documentElement.scrollWidth}));
     assert.ok(box.s<=box.w+1,JSON.stringify(box));
   }
+  async function icons(page,selector,count){
+    const images=page.locator(`${selector} .face-icon img`);
+    assert.equal(await images.count(),count);
+    await images.evaluateAll(async list=>{await Promise.all(list.map(img=>img.decode()));});
+    assert.ok(await images.evaluateAll(list=>list.every(img=>img.naturalWidth>0&&img.alt==='')));
+    const sizes=await images.evaluateAll(list=>list.map(img=>img.parentElement.getBoundingClientRect().width));
+    assert.ok(sizes.every(size=>size>=32&&size<=36));
+  }
   try{
     for(const[label,viewport,commanderId]of[
-      ['pc',{width:1440,height:1000},'commander.alphonse'],
-      ['mobile',{width:390,height:844},'commander.rosemond'],
+      ['pc-alphonse',{width:1440,height:1000},'commander.alphonse'],
+      ['mobile-rosemond',{width:390,height:844},'commander.rosemond'],
+      ['pc-rosemond',{width:1440,height:1000},'commander.rosemond'],
+      ['mobile-alphonse',{width:390,height:844},'commander.alphonse'],
     ]){
       const context=await browser.newContext({viewport});const page=await context.newPage();
       page.on('pageerror',error=>report.errors.push(error.message));
       const name=content.commanders[commanderId].name;
-      await page.goto(url);await click(page,'new');await click(page,'ack-page');await click(page,'ack-page');
+      await page.goto(url);await click(page,'new');await click(page,'ack-page');
+      await icons(page,'.speaker',1);
+      assert.match(await page.locator('.speaker img').getAttribute('src'),/kingdom-emblem\.svg$/);
+      await click(page,'ack-page');
       assert.deepEqual(await page.locator('.dialogue-turn .speaker').allTextContents(),['アルフォンス','ローズモンド','アルフォンス','ローズモンド']);
+      await icons(page,'.dialogue-turn',4);
+      assert.ok(await page.locator('.dialogue-turn').evaluateAll(list=>list.every(el=>{
+        const css=getComputedStyle(el);return css.borderTopWidth==='0px'&&parseFloat(css.marginTop)<=12;
+      })));
       await layout(page);await page.screenshot({path:path.join(out,`${label}-twins.png`),fullPage:true});
       const before=await stored(page);await click(page,'ack-page');
       assert.equal((await stored(page)).slot.run.recentDialogueLog.length,before.slot.run.recentDialogueLog.length+4);
       await review(page);await read(page);await click(page,'select-commander',commanderId);await read(page);
       for(const id of ['warehouse','servants','preparation']){await click(page,'tutorial-location',id);await read(page);}
-      await click(page,'tutorial-choice','b');await read(page);
+      await click(page,'tutorial-choice','b');
+      const success=await page.locator('.dialogue-text').textContent();
+      if(commanderId.endsWith('rosemond')) {
+        assert.match(success,/西棟ですね/);assert.match(success,/止まっているはずです/);
+        assert.doesNotMatch(success,/西棟だ|はずだ/);
+      } else {assert.match(success,/西棟だ/);assert.match(success,/止まっているはずだ/);}
+      await read(page);
       assert.doesNotMatch(await page.locator('.page').textContent(),/四人|四名|八名/);
       for(const id of h.defaultParty){await click(page,'profile',id);await click(page,'toggle-party',id);}
       await click(page,'confirm-party');assert.match(await page.locator('.page').textContent(),/この4名と共に/);
       await click(page,'depart');assert.ok((await page.locator('.dialogue-text').textContent()).startsWith(`${name}側4名`));
+      await icons(page,'.story-parties',8);
+      assert.deepEqual(await page.locator('.story-parties .member img').evaluateAll(list=>list.map(img=>img.getAttribute('src'))),
+        [...h.defaultParty,...e.getOpponentParty((await stored(page)).slot.run,content).map(c=>c.id)].map(id=>content.portraits[id].src));
+      await layout(page);await page.screenshot({path:path.join(out,`${label}-both-parties.png`),fullPage:true});
       let courtMixed=0;
       while((await stored(page)).slot.run.position.sceneId==='prologue.court'){
         if(await page.locator('.dialogue-turn').count()){
           courtMixed++;await page.screenshot({path:path.join(out,`${label}-court.png`),fullPage:true});
         }
+        if((await page.locator('.dialogue-panel').textContent()).includes('少し間を置く。')) {
+          assert.equal(await page.locator('.dialogue-turn').count(),3);
+          assert.match(await page.locator('.dialogue-panel').textContent(),/ですが.*少し間を置く。.*兄上も、お気をつけて/s);
+          await page.screenshot({path:path.join(out,`${label}-pause.png`),fullPage:true});
+          const beforePause=(await stored(page)).slot.run;
+          await resume(page);assert.deepEqual((await stored(page)).slot.run,beforePause);
+        }
         await click(page,'ack-page');
       }
-      assert.equal(courtMixed,3);
+      assert.equal(courtMixed,commanderId.endsWith('rosemond')?4:3);
       assert.match(await page.locator('.dialogue-text').textContent(),new RegExp(`${name}の傍らには、選んだ4人`));
       assert.doesNotMatch(await page.locator('.dialogue-text').textContent(),/主人公/);
       await read(page);assert.equal((await stored(page)).slot.run.position.phase,'map');
@@ -107,8 +146,20 @@ const path = require('node:path');
       await resume(page);assert.deepEqual((await stored(page)).slot.run,mid);await read(page);
       assert.equal((await stored(page)).slot.run.storyEvents['event.midgame-reunion'].status,'completed');
       assert.equal((await stored(page)).slot.run.position.phase,'map');
-      report.scenarios.push({label,commanderId,groupedDeclarationTurns:4,courtPages:3,feedbackChoices:results,
-        reviewReadOnly:true,departureName:true,freeSelection:true,tutorial:true,reunionResume:true,status:'passed'});
+      await icons(page,'.map-sidebar .member',4);
+      // Failed portrait requests must leave all names and navigation usable.
+      let roster=h.start(h.defaultParty,commanderId);
+      roster={...roster,position:{phase:'departure',sceneId:'prologue.court',blockIndex:0}};
+      await page.route('**/src/assets/portraits/*.png',route=>route.abort());
+      await seed(page,roster);
+      await page.waitForFunction(()=>[...document.querySelectorAll('.story-parties .face-icon img')]
+        .every(img=>img.classList.contains('image-unavailable')));
+      assert.equal(await page.locator('.story-parties .member').count(),8);
+      assert.ok(await page.locator('.story-parties .member span:last-child').evaluateAll(list=>list.every(el=>el.textContent.length>1)));
+      assert.equal(await page.locator(q('ack-page')).isEnabled(),true);
+      await layout(page);
+      report.scenarios.push({label,commanderId,groupedDeclarationTurns:4,feedbackChoices:results,
+        courtPages:courtMixed,officialIcons:true,missingImageNames:true,reviewReadOnly:true,departureName:true,freeSelection:true,tutorial:true,reunionResume:true,status:'passed'});
       await context.close();
     }
     assert.deepEqual(report.errors,[]);
