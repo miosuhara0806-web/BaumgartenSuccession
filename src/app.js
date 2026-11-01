@@ -1,5 +1,5 @@
 import { defaultContent, contentForRun } from './content/catalog.js';
-import { createRun, transition, getCurrentText, getAvailableConversations, getAvailableChoices,
+import { createRun, transition, getCurrentText, getCurrentTextPage, getAvailableConversations, getAvailableChoices,
   isLegalParty, getOpponentParty, getCrisisAssignments, getTotalScore, getTheoRemaining,
   canUseTheo, canManualSave, validateRun, trialWasReached } from './engine.js';
 import { createStorage } from './storage.js';
@@ -30,12 +30,61 @@ let modal = null;
 let renderedModal = null;
 let toast = '';
 let toastTimer;
+let readingSession = '';
+let readingHistory = [];
+let readingPreviewIndex = null;
 
 function button(label, action, extra='', kind='') {
   return `<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${label}</button>`;
 }
 function fixtureNote() {
   return `<div class="fixture-note"><strong>${content.contentStatus === 'partial' ? esc(content.subtitle || 'アルバ章・検収版') : '旧版の仮データ周回'}</strong>${esc(content.fixtureNotice)}</div>`;
+}
+function readingSessionKey(state) {
+  if (!state?.position) return '';
+  const p=state.position;
+  const suffix=(p.phase==='trial'||p.phase==='trialResult')?p.trialId
+    :p.phase==='storyEvent'?p.eventId
+    :p.phase==='chapterClosing'?p.regionId
+    :p.phase==='conversation'?p.conversationId
+    :p.phase==='theoReport'?p.investigationId
+    :p.phase==='tutorial'?`${p.stage || ''}:${p.locationId || p.sceneId || ''}`
+    :p.sceneId || p.phase;
+  return `${state.runId}:${p.phase}:${suffix || ''}`;
+}
+function syncReadingSession(state=run) {
+  const key=readingSessionKey(state);
+  if(key!==readingSession) {
+    readingSession=key;
+    readingHistory=[];
+    readingPreviewIndex=null;
+  }
+}
+function rememberReadingPage(state) {
+  syncReadingSession(state);
+  readingHistory.push(structuredClone(state));
+  if(readingHistory.length>100) readingHistory.shift();
+  readingPreviewIndex=null;
+}
+function canReadPrevious() {
+  return readingPreviewIndex===null ? readingHistory.length>0 : readingPreviewIndex>0;
+}
+function readPrevious() {
+  if(!readingHistory.length) return;
+  if(readingPreviewIndex===null) readingPreviewIndex=readingHistory.length-1;
+  else if(readingPreviewIndex>0) readingPreviewIndex--;
+  render();
+}
+function readForward() {
+  if(readingPreviewIndex===null) return;
+  if(readingPreviewIndex<readingHistory.length-1) readingPreviewIndex++;
+  else readingPreviewIndex=null;
+  render();
+}
+function previousReadingButton() {
+  return readingPreviewIndex===null && readingHistory.length
+    ? button('← 前の文章へ','read-prev','','compact')
+    : '';
 }
 
 function introductionLinks() {
@@ -149,18 +198,24 @@ function mapPage() {
     const sub=!r.implemented?'準備中':status==='completed'?'完了 · 記録を開く':status==='active'?'攻略中 · 続きへ':'未訪問 · 試練を開始';
     return `<button type="button" class="map-place ${available&&status!=='completed'?'ready':''} ${status==='completed'?'complete':''}" data-region="${r.id}" data-action="${status==='completed'?'record':'region'}" data-id="${r.id}" ${!available?'disabled':''}><strong>${esc(r.name)}</strong><small>${sub}</small></button>`;
   }).join('');
-  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav></section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
+  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav></section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
 }
 function conversationButtons() {
   return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}"><span class="member-avatar" aria-hidden="true">${esc(nameOf(c.participantIds[0]).slice(0,1))}</span><span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');
 }
 function trialSidebar() {
+  if(readingPreviewIndex!==null) return '<aside class="trial-sidebar"><section class="panel"><h3>読み返し中</h3><p class="small muted">「次へ」で現在の進行へ戻れます。読み返し中は進行操作を行いません。</p></section></aside>';
   const decision=run.position.phase==='trial'&&run.position.stage==='decision';
-  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div></section><section class="panel"><h3>テオの調査</h3><p class="small muted">残り ${getTheoRemaining(run)} / 2 回<br>各地域の大試練で一度だけ。</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
+  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p></section><section class="panel"><h3>テオの調査</h3><p class="small muted">残り ${getTheoRemaining(run)} / 2 回<br>各地域の大試練で一度だけ。</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
 }
-function dialoguePanel(block) {
-  const read=reader.readTextKeys.includes(block.readKey);
-  return `<section class="dialogue-panel"><div class="speaker">${esc(nameOf(block.speakerId))}</div><div class="dialogue-text">${esc(block.text)}</div><div class="dialogue-actions"><span class="read-indicator">${read?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!read?'disabled':''}>既読スキップ</button>${button('次へ →','ack','','primary')}</div></div></section>`;
+function dialoguePanel(blocks) {
+  const page=Array.isArray(blocks)?blocks:[blocks].filter(Boolean);
+  const allRead=page.every(block=>reader.readTextKeys.includes(block.readKey));
+  const someRead=page.some(block=>reader.readTextKeys.includes(block.readKey));
+  const preview=readingPreviewIndex!==null;
+  const nextAction=preview?'read-forward':'ack-page';
+  const text=page.map(block=>esc(block.text)).join('<br><br>');
+  return `<section class="dialogue-panel"><div class="speaker">${esc(nameOf(page[0]?.speakerId))}</div><div class="dialogue-text">${text}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button type="button" class="button" data-action="read-prev" ${!canReadPrevious()?'disabled':''}>← 前へ</button><button class="text-button small" data-action="skip" ${preview||!allRead?'disabled':''}>既読スキップ</button>${button('次へ →',nextAction,'','primary')}</div></div></section>`;
 }
 function conversationBlocks(startIndex=0) {
   const p=run?.position;
@@ -192,12 +247,14 @@ function assignments(choice) {
 }
 function choicesPanel() {
   const trial=content.trials[run.position.trialId];
-  return `<section><div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'三つの作戦は、いずれも四人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
+  const back=previousReadingButton();
+  return `<section>${back?`<div class="button-row" style="margin-bottom:14px">${back}</div>`:''}<div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'三つの作戦は、いずれも四人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
 }
 function trialPage() {
   const p=run.position;
   const trial=content.trials[p.trialId || p.returnPosition?.trialId];
-  const block=getCurrentText(run,content);
+  const page=getCurrentTextPage(run,content);
+  const block=page[0];
   const regionId=p.regionId || p.returnPosition?.regionId || trial?.regionId;
   const result=run.trialResults[p.trialId];
   const heading=p.phase==='theoReport'?'テオの調査報告':p.phase==='conversation'?'同行者の声':p.phase==='chapterClosing'?`${regionName(regionId)}からの帰還`:trial?.title || '王都からの旅立ち';
@@ -208,10 +265,10 @@ function trialPage() {
   }
   if(introductionBlocks(p.sceneId).length) body+=introductionPanel();
   else if(conversationBlocks().length) body+=conversationPanel();
-  else if(block) body+=dialoguePanel(block);
+  else if(block) body+=dialoguePanel(page);
   else if(p.phase==='trial'&&p.stage==='decision') body+=choicesPanel();
   else if(p.phase==='trialResult'&&p.stage==='done') {
-    body+=`<section class="panel"><h2>判断を記録しました</h2><p class="small muted">評価の再表示で得点が増えることはありません。この区切りでセーブするか、次へ進めます。</p>${trial.interaction==='crisisPlan'?assignments(trial.choices.find(c=>c.id===result.choiceId)):''}<div class="button-row" style="margin-top:24px">${button(trial.kind==='major'?(content.scenes[content.regions[trial.regionId].closingSceneId]?.blocks.length?'帰還の会話へ →':'地図へ戻る →'):'次の試練へ →','next-trial','','primary')}${button('セーブ / ロード','saves')}</div></section>`;
+    body+=`<section class="panel"><h2>判断を記録しました</h2><p class="small muted">評価の再表示で得点が増えることはありません。この区切りでセーブするか、次へ進めます。</p>${trial.interaction==='crisisPlan'?assignments(trial.choices.find(c=>c.id===result.choiceId)):''}<div class="button-row" style="margin-top:24px">${previousReadingButton()}${button(trial.kind==='major'?(content.scenes[content.regions[trial.regionId].closingSceneId]?.blocks.length?'帰還の会話へ →':'地図へ戻る →'):'次の試練へ →','next-trial','','primary')}${button('セーブ / ロード','saves')}</div></section>`;
   }
   if (p.phase==='trialResult') {
     const selected=trial.choices.find(c=>c.id===result.choiceId);
@@ -222,22 +279,24 @@ function trialPage() {
   return `<main class="page">${pageHeading(regionId?`${esc(regionName(regionId))} / 試練の記録`:'旅のはじまり',esc(heading),'',canReturn?button('地図へ一時帰還','return-map','', 'compact'):'')}${trial?`<div class="chapter-path">${content.regions[trial.regionId].trialIds.map((id,i)=>`<span class="${id===trial.id?'active':''}">${i<2?`小試練 ${i+1}`:'大試練'}</span>`).join('')}</div>`:''}<div class="trial-layout"><div class="trial-main">${body}<div style="margin-top:20px">${fixtureNote()}</div></div>${trialSidebar()}</div></main>`;
 }
 function storyPage() {
-  const block=getCurrentText(run,content);
+  const page=getCurrentTextPage(run,content);
+  const block=page[0];
   if (content.prologue) {
     const event = run.position.phase === 'storyEvent';
     const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
     const showParties=event || run.position.phase === 'departure';
     const parties=showParties?`<div class="camp-grid story-parties"><section class="panel"><h3>${esc(nameOf(run.commanderId))}の一行</h3>${run.partyIds.map(id=>member(character(id))).join('')}</section><section class="panel"><h3>${esc(rival.name)}の一行</h3>${getOpponentParty(run,content).map(member).join('')}</section></div>`:'';
-    return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${block?dialoguePanel(block):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
+    return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${block?dialoguePanel(page):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
   }
   return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(block):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
 }
 function tutorialPage() {
   const p=run.position, t=run.tutorial;
-  const block=getCurrentText(run,content);
+  const page=getCurrentTextPage(run,content);
+  const block=page[0];
   const locations=values(content.prologue.tutorial.locations);
   const controls=p.stage==='investigate'?`<section class="panel"><h2>調査する場所</h2><div class="button-row">${locations.map(l=>button(`${esc(l.name)}${t.investigatedLocationIds.includes(l.id)?' · 調査済み（再確認）':''}`,'tutorial-location',`data-id="${l.id}"`)).join('')}</div><p class="small muted">3地点をすべて調査した後に判断できます。調査済みの場所も再確認できます。</p><h2>式典飾りはどこにある？</h2><div class="tutorial-choices">${[['a','A. 王城倉庫'],['b','B. 西棟の保管場所'],['c','C. 式典会場']].map(([id,label])=>button(label,'tutorial-choice',`data-id="${id}" ${t.judgmentUnlocked?'':'disabled'}`)).join('')}</div></section>`:'';
-  return `<main class="page story-page">${pageHeading('序章の調査','消えた式典の飾り',`調査済み ${t.investigatedLocationIds.length} / 3 地点 · 誤答のペナルティはありません。`)}${block?dialoguePanel(block):controls}<div class="button-row">${button('会話ログ','log')}</div></main>`;
+  return `<main class="page story-page">${pageHeading('序章の調査','消えた式典の飾り',`調査済み ${t.investigatedLocationIds.length} / 3 地点 · 誤答のペナルティはありません。`)}${block?dialoguePanel(page):controls}<div class="button-row">${button('会話ログ','log')}</div></main>`;
 }
 function profileModal(id) {
   const c=character(id), selected=run?.partyIds.includes(id);
@@ -320,6 +379,10 @@ function render() {
   const conversationScrollTop=previousConversation?.scrollTop || 0;
   const focusData=active?.dataset?.action?{action:active.dataset.action,id:active.dataset.id}:null;
   const modalScrollTop=modal && modal===renderedModal ? app.querySelector('[role="dialog"]')?.scrollTop || 0 : 0;
+  const liveRun=run;
+  if(liveRun && !title) syncReadingSession(liveRun);
+  const previewRun=readingPreviewIndex===null?null:readingHistory[readingPreviewIndex];
+  if(previewRun) run=previewRun;
   let body='';
   if(title||!run) body=titlePage();
   else {
@@ -334,6 +397,7 @@ function render() {
       default: body=trialPage();
     }
   }
+  if(previewRun) run=liveRun;
   app.innerHTML=header()+(error?`<div class="error-banner" role="alert"><p>${esc(error)}</p><div class="button-row">${button('再試行','retry','', 'compact')}${ready?button('保存済みをロード','saves','','compact'):''}</div></div>`:'')+body+(!title?'<footer class="footer-note">バウムガルテン王国の継承戦 / v0.3 基盤試作 · 正式な王国史は作成されません。</footer>':'')+modalMarkup()+(toast?`<div class="toast" role="status">${esc(toast)}</div>`:'')+(busy?'<div class="busy-corner" role="status">保存しています…</div>':'');
   if(busy) app.querySelectorAll('button').forEach(b=>b.disabled=true);
   const conversationText=app.querySelector('.conversation-text');
@@ -393,13 +457,23 @@ async function perform(action) {
   if(busy||pending) return;
   const oldPhase=run.position.phase;
   const oldScene=run.position.sceneId;
+  const page=action.type==='ACK_PAGE'?getCurrentTextPage(run,content):[];
+  const pageSnapshot=action.type==='ACK_PAGE'?structuredClone(run):null;
   const block=action.type==='ACK_TEXT'?getCurrentText(run,content):null;
   const blocks=action.type==='ACK_INTRODUCTION'
     ? introductionBlocks(oldScene).slice(run.position.blockIndex)
-    : action.type==='ACK_CONVERSATION' ? conversationBlocks(run.position.blockIndex) : block?[block]:[];
+    : action.type==='ACK_CONVERSATION' ? conversationBlocks(run.position.blockIndex)
+    : action.type==='ACK_PAGE' ? page : block?[block]:[];
   let next;
   try {
-    if(action.type==='ACK_INTRODUCTION') {
+    if(action.type==='ACK_PAGE') {
+      if(!blocks.length) return;
+      next=run;
+      for(const entry of blocks) {
+        if(getCurrentText(next,content)?.id!==entry.id) throw new Error('文章の表示位置が一致しません。');
+        next=transition(next,{type:'ACK_TEXT'},content);
+      }
+    } else if(action.type==='ACK_INTRODUCTION') {
       if(run.position.phase!=='trial' || run.position.stage!=='intro' || !blocks.length) return;
       next=run;
       for(const entry of blocks) {
@@ -416,6 +490,7 @@ async function perform(action) {
     } else next=transition(run,action,content);
   }
   catch(e) { notify(e.message); render(); return; }
+  if(pageSnapshot) rememberReadingPage(pageSnapshot);
   run=next;
   const expectedRevision=revision;
   await transact(()=>storage.commitAuto(next,{expectedRevision,readTextKeys:blocks.map(entry=>entry.readKey)}));
@@ -486,6 +561,9 @@ async function handle(action,id) {
     case 'back-draft': await perform({type:'BACK_TO_DRAFT'}); break;
     case 'depart': await perform({type:'DEPART'}); break;
     case 'ack': await perform({type:'ACK_TEXT'}); break;
+    case 'ack-page': await perform({type:'ACK_PAGE'}); break;
+    case 'read-prev': readPrevious(); break;
+    case 'read-forward': readForward(); break;
     case 'skip': await skipRead(); break;
     case 'region': await perform({type:'START_REGION',regionId:id}); break;
     case 'return-map': await perform({type:'RETURN_MAP'}); break;

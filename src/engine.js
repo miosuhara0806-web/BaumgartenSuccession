@@ -116,6 +116,21 @@ export function getCurrentText(run, content) {
   return { ...block, text, readKey: `${block.id}@${block.textRevision}${variant}` };
 }
 
+export function getCurrentTextPage(run, content) {
+  const first = getCurrentText(run, content);
+  if (!first) return [];
+  const ids = blockIdsFor(run, content);
+  const speakerId = first.speakerId || null;
+  const page = [first];
+  for (let blockIndex = run.position.blockIndex + 1; blockIndex < ids.length; blockIndex++) {
+    const candidate = getCurrentText({ ...run, position: { ...run.position, blockIndex } }, content);
+    if (!candidate) continue;
+    if ((candidate.speakerId || null) !== speakerId) break;
+    page.push(candidate);
+  }
+  return page;
+}
+
 export function getAvailableChoices(run, content) {
   if (run.position.phase !== 'trial' || run.position.stage !== 'decision' || getCurrentText(run, content)) return [];
   if (own(run.trialResults, run.position.trialId)) return [];
