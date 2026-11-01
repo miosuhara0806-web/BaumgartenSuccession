@@ -29,7 +29,7 @@ const collect=value=>Array.isArray(value)?value:Object.values(value).flatMap(col
 test('the static official manuscript preserves every quote and narration; only the common Rosemond reply is adjusted',async()=>{
   const text=await readFile(new URL('../docs/Baumgarten_ending_script_v2.txt',import.meta.url),'utf8');
   assert.equal(createHash('sha256').update(text).digest('hex'),manuscriptSha256);
-  for(const[name,hash]of [['アルフォンス','a1a70617364403115365f9154263b16203c11402395e08305dd98ab0a970295a'],['ローズモンド','4d4f34bbb216705befbcc008a6710e94065d62df8130614a52a8ab4b97502df0']]) {
+  for(const[name,hash]of [['アルフォンス','831255edc9a14484bd6024228c7564237a553598dfb47d9ffa2649c7a12ca57a'],['ローズモンド','1a447fe328b29fdf46ca866229def7cb4660b64f830b4145b0233002560443b5']]) {
     const image=await readFile(new URL(`../src/assets/戴冠式${name}.png`,import.meta.url));
     assert.equal(createHash('sha256').update(image).digest('hex'),hash);assert.equal(image.readUInt32BE(16),1130);assert.equal(image.readUInt32BE(20),753);
   }
@@ -50,10 +50,13 @@ test('the static official manuscript preserves every quote and narration; only t
   }
   assert.equal(Object.keys(script.governance).length,16);
   const returned=content.scenes['ending.return'].blocks.map(id=>content.textBlocks[id]);
-  assert.ok(returned.some(b=>b.text==='エーレンフェルスで最後の判断を終え、一行は王都へ戻った。'));
+  assert.ok(returned.some(b=>b.text==='エーレンフェルスで最後の判断を終え、一行は王城へ戻った。'));
   assert.ok(returned.some(b=>b.speakerId==='commander.rosemond'&&b.text==='「……終わったのですね」'));
   assert.ok(returned.some(b=>b.speakerId==='commander.alphonse'&&b.text==='「……終わったのか」'));
   assert.equal(script.ensemble.filter(b=>b.speakerId==='char.harold'&&b.text.includes('僕')).length,2);
+  assert.deepEqual(script.ensemble.filter(b=>b.speakerId==='char.frederica').map(b=>b.text),[
+    '「同じじゃない？」','「変えたくない人もいる」','「考えるのが早い」','「私は構わない」','「嫌なら来なければいい」','「却下」','「面倒」','「来る」',
+  ]);
 });
 test('the new edition preserves every trial, tag and accepted block; old saves stay in their original edition',()=>{
   assert.equal(defaultContent,content);assert.equal(contentForRun(engine.createRun(previous)),previous);
@@ -64,6 +67,28 @@ test('the new edition preserves every trial, tag and accepted block; old saves s
   assert.equal(previous.scenes['prologue.reunion-comic.parties'].nextLabel,'漫画を読む →');
   assert.equal(content.scenes['prologue.reunion-comic.parties'].nextLabel,'再会の場面へ →');
   assert.equal(engine.getFinalRank(79),'success');assert.equal(engine.getFinalRank(89),'highSuccess');
+});
+test('only the three approved ending blocks get new read revisions; old log entries and save positions remain intact',async()=>{
+  const edits=[
+    ['text.ending.return.1','エーレンフェルスで最後の判断を終え、一行は王都へ戻った。'],
+    ['text.ending.ensemble.12','「同じだろ」'],['text.ending.ensemble.22','「変えたくない奴もいる」'],
+  ];
+  assert.deepEqual(Object.values(content.textBlocks).filter(b=>b.id.startsWith('text.ending.')&&b.textRevision>1).map(b=>b.id).sort(),edits.map(([id])=>id).sort());
+  for(const commanderId of Object.keys(content.commanders))for(const[id,oldText]of edits) {
+    const scene=Object.values(content.scenes).find(s=>s.blocks.includes(id));
+    const r=endingRun(90,commanderId);r.position={phase:'ending',sceneId:scene.id,blockIndex:scene.blocks.indexOf(id)};
+    const oldLog={textId:id,textRevision:1,readKey:`${id}@1`,speakerId:content.textBlocks[id].speakerId,text:oldText,sceneId:scene.id};
+    r.recentDialogueLog=[...r.recentDialogueLog,oldLog].slice(-200);
+    const {app,storage}=await endingHarness(r);
+    await storage.commitAuto(r,{expectedRevision:await storage.getRevision(),readTextKeys:[oldLog.readKey]});
+    await app.openSaves();await app.load('auto');assert.deepEqual(app.state().run,r);
+    const shown=engine.getCurrentText(r,content);assert.equal(shown.textRevision,2);assert.notEqual(shown.readKey,oldLog.readKey);
+    assert.equal(app.state().reader.readTextKeys.includes(shown.readKey),false);
+    await app.handle('ack-page');
+    assert.deepEqual(app.state().run.recentDialogueLog.find(b=>b.readKey===oldLog.readKey),oldLog);
+    assert.ok(app.state().reader.readTextKeys.includes(oldLog.readKey));assert.ok(app.state().reader.readTextKeys.includes(shown.readKey));
+    assert.deepEqual((await storage.getSlot('auto')).run,app.state().run);
+  }
 });
 test('all sixteen governance texts select exactly once; actual major-trial tags are the only counted tags',()=>{
   const base=endingRun(90);

@@ -1,10 +1,10 @@
 // Generated from docs/Baumgarten_ending_script_v2.txt; do not edit by hand.
-export const manuscriptSha256 = 'edbcb6fe5af868f98196070af0bbd2d0d89e2d0155b32e8e2db6ba235dfcc5a4';
+export const manuscriptSha256 = '84d435fe50ff25ab9d4830dc11fc5daa6419e7bb8cf42f53614628677ac86235';
 export const endingManuscript = {
   "return": [
     {
       "speakerId": null,
-      "text": "エーレンフェルスで最後の判断を終え、一行は王都へ戻った。"
+      "text": "エーレンフェルスで最後の判断を終え、一行は王城へ戻った。"
     },
     {
       "speakerId": null,
@@ -1270,7 +1270,7 @@ export const endingManuscript = {
     },
     {
       "speakerId": "char.frederica",
-      "text": "「同じだろ」"
+      "text": "「同じじゃない？」"
     },
     {
       "speakerId": "char.sandro",
@@ -1310,7 +1310,7 @@ export const endingManuscript = {
     },
     {
       "speakerId": "char.frederica",
-      "text": "「変えたくない奴もいる」"
+      "text": "「変えたくない人もいる」"
     },
     {
       "speakerId": "char.lisette",

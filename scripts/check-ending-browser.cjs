@@ -33,10 +33,12 @@ const path=require('node:path');
         const s=createStorage({validateRun:r=>validateRun(r,contentForRun(r))});await s.commitAuto(run,{expectedRevision:await s.getRevision()});
       },initial);
       await resume(page);
-      const seen=new Set(),voices=new Set();let pages=0,imageFailureChecked=false;
+      const seen=new Set(),voices=new Set(),corrections=new Set();let pages=0,imageFailureChecked=false;
       while(await page.locator('.ending-page').count()) {
         assert.ok(++pages<220);const before=await saved(page),scene=before.run.position.sceneId;
         assert.doesNotMatch(await page.locator('.ending-page').textContent(),/主人公|○○の場合|継承点\d|が単独最多/);
+        const shownText=await page.locator('.ending-page').textContent();
+        for(const text of ['エーレンフェルスで最後の判断を終え、一行は王城へ戻った。','「同じじゃない？」','「変えたくない人もいる」'])if(shownText.includes(text))corrections.add(text);
         await layout(page);
         if(scene==='ending.ensemble') {
           for(const id of Object.keys(content.characters)) {
@@ -81,13 +83,13 @@ const path=require('node:path');
       }
       const complete=await saved(page);assert.equal(complete.run.position.phase,'completed');assert.equal(complete.records.length,1);
       assert.equal(complete.run.endingResult.sovereignId,initial.endingResult.sovereignId);assert.deepEqual(complete.run.trialResults,initial.trialResults);
-      assert.equal(voices.size,8);assert.equal(await page.locator('.fin-city').count(),5);assert.equal(await page.locator('.fin-page h1').textContent(),'FIN');
+      assert.equal(voices.size,8);assert.equal(corrections.size,3);assert.equal(await page.locator('.fin-city').count(),5);assert.equal(await page.locator('.fin-page h1').textContent(),'FIN');
       assert.equal(await page.locator('.app-header').count(),0);assert.doesNotMatch(await page.locator('.fin-page').textContent(),/継承点|統治/);
       if(report.scenarios.length===0)await page.waitForFunction(()=>Number(getComputedStyle(document.querySelector('.fin-actions')).opacity)>.99);
       await layout(page);await page.screenshot({path:path.join(out,`${label}-fin.png`),fullPage:true});
       await resume(page);assert.equal(await page.locator('.fin-page').count(),1);assert.equal((await saved(page)).records.length,1);
       await click(page,'fin-title');assert.equal(await page.locator('.title-menu').count(),1);
-      report.scenarios.push({label,score,sovereignId:initial.endingResult.sovereignId,pages,voices:voices.size,saveResume:true,readOnlyReview:true,completedRecords:1,imageFailureChecked,status:'passed'});
+      report.scenarios.push({label,score,sovereignId:initial.endingResult.sovereignId,pages,voices:voices.size,approvedTextCorrections:corrections.size,saveResume:true,readOnlyReview:true,completedRecords:1,imageFailureChecked,status:'passed'});
       await context.close();
     }
     assert.deepEqual(report.errors,[]);await writeFile(path.join(out,'report.json'),JSON.stringify(report,null,2));

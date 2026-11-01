@@ -52,6 +52,15 @@ export function createEndingContent() {
   scene('farewell','物語の、その先へ',[script.farewell]);
   for(let i=0;i<scenes.length-1;i++)content.scenes[scenes[i]].nextSceneId=scenes[i+1];
   content.officialEnding.lastSceneId=scenes.at(-1);
+  // Author-approved copy fixes, 2026-11-02: preserve saved positions and old logs.
+  for(const [id,text]of [
+    ['text.ending.return.1','エーレンフェルスで最後の判断を終え、一行は王城へ戻った。'],
+    ['text.ending.ensemble.12','「同じじゃない？」'],
+    ['text.ending.ensemble.22','「変えたくない人もいる」'],
+  ]) {
+    if(content.textBlocks[id]?.text!==text)throw new Error(`Approved ending copy no longer matches ${id}`);
+    content.textBlocks[id].textRevision=2;
+  }
   return content;
 }
 export const content=createEndingContent();
