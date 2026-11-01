@@ -88,6 +88,7 @@ export function createCompletionSignature(run, record) {
     submittedPolicies: record.submittedPolicies,
     epilogueSnapshot: record.epilogueSnapshot,
     companionAfterwordSnapshots: record.companionAfterwordSnapshots,
+    ...(record.endingRulesVersion?{endingRulesVersion:record.endingRulesVersion,sovereignId:record.sovereignId,ensembleAfterwordSnapshot:record.ensembleAfterwordSnapshot}:{}),
   });
 }
 
@@ -108,7 +109,10 @@ function assertCompletion(run, record) {
     throw badData('王都を含む全 5 章の終了前には王国史へ登録できない。');
   }
   const score = Object.values(run.trialResults).reduce((sum, result) => sum + result.awardedPoints, 0);
-  const rank = score >= 80 ? 'highSuccess' : score >= 60 ? 'success' : 'failure';
+  const official=run.endingResult?.rulesVersion==='succession-2026-11-01';
+  if(official && run.position.phase!=='completed' && !(run.position.sceneId==='ending.farewell'&&run.position.blockIndex===1))throw badData('正式終幕を読み終える前には完了記録を保存できません。');
+  const rank = official ? (score>=90?'high':score>=80?'normal':'other') : score >= 80 ? 'highSuccess' : score >= 60 ? 'success' : 'failure';
+  if(official && (record.endingRulesVersion!==run.endingResult.rulesVersion || record.sovereignId!==run.endingResult.sovereignId || !nonempty(record.ensembleAfterwordSnapshot)))throw badData('正式終幕の王位結果または談話記録が一致しません。');
   if (record.finalScore !== score || score < 0 || score > 100 || record.rank !== rank || !nonempty(record.outcome)) {
     throw badData('王国史の最終結果が確定した試練結果と一致しない。');
   }
@@ -326,16 +330,18 @@ export function createStorage({ indexedDB = globalThis.indexedDB, dbName = 'baum
         };
       });
     },
-    async recordCompletion(run, record, { expectedRevision } = {}) {
+    async recordCompletion(run, record, { expectedRevision, readTextKeys = [] } = {}) {
       const snapshot = clone(run);
       const provided = clone(record);
+      const keys=clone(readTextKeys);
+      if(!Array.isArray(keys)||!keys.every(nonempty))throw badData('既読キーの形式が正しくない。');
       if (contentStatus !== 'reviewed') throw new StorageError('PROTOTYPE_COMPLETION', '正式確認前の内容から王国史へ登録することはできない。');
       assertRun(snapshot);
       assertCompletion(snapshot, provided);
       return enqueue(async () => {
         const completionKey = await createCompletionKey(snapshot, provided);
         const decisionSignature = createCompletionSignature(snapshot, provided);
-        return write(['slots', 'chronicles'], expectedRevision, ({ tx, read, revision, finish }) => {
+        return write(['slots', 'chronicles', 'readerProfile'], expectedRevision, ({ tx, read, revision, finish }) => {
           read('chronicles', completionKey, existing => {
             const completedRecord = existing ?? {
               ...provided,
@@ -367,7 +373,13 @@ export function createStorage({ indexedDB = globalThis.indexedDB, dbName = 'baum
             assertRun(completedRun);
             if (!existing) tx.objectStore('chronicles').put(completedRecord, completionKey);
             tx.objectStore('slots').put(makeSlot('auto', completedRun, revision), 'auto');
-            finish({ record: completedRecord, run: completedRun });
+            if(keys.length)read('readerProfile','global',profile=>{
+              assertProfile(profile);
+              const readerProfile={...profile,readTextKeys:[...new Set([...profile.readTextKeys,...keys])].sort()};
+              tx.objectStore('readerProfile').put(readerProfile,'global');
+              finish({record:completedRecord,run:completedRun,readerProfile});
+            });
+            else finish({ record: completedRecord, run: completedRun });
           });
         });
       });

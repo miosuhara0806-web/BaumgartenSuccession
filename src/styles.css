@@ -293,3 +293,26 @@
 .reunion-tools { margin-top:20px; }
 .reunion-page .story-parties .member { margin-top:12px; }
 .comic-page ~ .toast { position:static; transform:none; margin:16px auto; }
+.coronation-reader { margin-bottom:20px; }
+.coronation-fit img { display:block; width:100%; height:auto; }
+.coronation-original { width:1130px!important; }
+.coronation-original img { width:1130px; max-width:none; height:auto; display:block; }
+.coronation-reader:has(details[open]) .coronation-fit { display:none; }
+.ending-page ~ .toast { position:static; transform:none; margin:16px auto; }
+.fin-page { position:relative; isolation:isolate; min-height:100dvh; overflow:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; padding:70px 24px; background:#f4f0e5; color:#9a8153; }
+.fin-page::before,.fin-page::after { content:''; position:absolute; inset:28px; border:1px solid #b99d604a; pointer-events:none; }
+.fin-page::after { inset:34px; border-color:#b99d6024; }
+.fin-map { position:absolute; width:min(95vw,1004px); aspect-ratio:1004/753; z-index:-1; top:50%; left:50%; transform:translate(-50%,-50%); animation:fin-appear 2s .7s both; }
+.fin-map img { width:100%; height:100%; object-fit:contain; opacity:.075; mask-image:radial-gradient(ellipse,#000 30%,transparent 73%); }
+.fin-city { position:absolute; width:5px; height:5px; border-radius:50%; background:#ad8e4d; opacity:.35; }
+.fin-seal { animation:fin-appear 1.8s 1.4s both; }
+.fin-seal img { width:66px; height:80px; object-fit:contain; opacity:.65; }
+.fin-copy { text-align:center; animation:fin-appear 2s 2s both; }
+.fin-copy h1 { font-family:Georgia,serif; font-size:clamp(3rem,7vw,4.5rem); font-weight:400; letter-spacing:.28em; margin:0 0 18px .28em; }
+.fin-copy p { font-size:.64rem; letter-spacing:.38em; }
+.fin-actions { margin-top:65px; animation:fin-appear 1.5s 3.5s both; }
+.fin-actions .button { background:transparent; color:#7b6b4b; font-size:.85rem; border-color:#b99d6055; }
+.fin-veil { position:absolute; inset:0; background:#1e2924; pointer-events:none; animation:fin-darken 1.5s both; }
+@keyframes fin-appear { from {opacity:0} to {opacity:1} }
+@keyframes fin-darken { from {opacity:1} to {opacity:0} }
+@media(prefers-reduced-motion:reduce) { .fin-map,.fin-seal,.fin-copy,.fin-actions { animation:none; opacity:1; } .fin-veil { animation:none; opacity:0; } }

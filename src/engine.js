@@ -46,6 +46,38 @@ export function getGovernance(run, content) {
   return { kind: dominantTags.length === 1 ? 'single' : dominantTags.length === 2 ? 'dual' : 'balanced', dominantTags: dominantTags.length > 2 ? [] : dominantTags, counts };
 }
 
+export function getSuccessionResult(run, content) {
+  assert(content.officialEnding, '正式終幕の内容版ではありません。');
+  const finalScore=getTotalScore(run),governance=getGovernance(run,content);
+  const rank=finalScore>=90?'high':finalScore>=80?'normal':'other';
+  const sovereignId=rank==='other'?Object.keys(content.commanders).find(id=>id!==run.commanderId):run.commanderId;
+  return {rulesVersion:content.officialEnding.rulesVersion,finalScore,rank,sovereignId,
+    governance,governanceKey:governance.kind==='balanced'?'balanced':[...governance.dominantTags].sort().join('+')};
+}
+
+export function buildEndingRecord(run, content) {
+  assert(content.officialEnding&&run.endingResult,'正式終幕の結果がありません。');
+  const texts=[],ensemble=[];let sceneId=content.endingSceneId;
+  while(sceneId) {
+    const scene=content.scenes[sceneId];
+    for(let blockIndex=0;blockIndex<scene.blocks.length;blockIndex++) {
+      const block=getCurrentText({...run,position:{phase:'ending',sceneId,blockIndex}},content);
+      if(block)(sceneId==='ending.ensemble'?ensemble:texts).push(block);
+    }
+    sceneId=scene.nextSceneId;
+  }
+  const result=run.endingResult;
+  const submittedPolicies=Object.fromEntries(Object.values(content.trials).filter(t=>t.kind==='major').map(t=>{
+    const choice=t.choices.find(c=>c.id===run.trialResults[t.id].choiceId);
+    return [t.regionId,{policyId:choice.policyId||choice.id,labelAtCompletion:choice.label}];
+  }));
+  return {contentStatus:'reviewed',endingRulesVersion:result.rulesVersion,sovereignId:result.sovereignId,
+    finalScore:result.finalScore,rank:result.rank,outcome:content.commanders[result.sovereignId].name,
+    governance:clone(result.governance),submittedPolicies,epilogueSnapshot:texts.map(b=>b.text).join('\n\n'),
+    ensembleAfterwordSnapshot:ensemble.map(b=>b.text).join('\n\n'),
+    companionAfterwordSnapshots:Object.fromEntries(run.partyIds.map(id=>[id,ensemble.filter(b=>b.speakerId===id).map(b=>b.text).join('\n\n')]))};
+}
+
 export function evaluateCondition(condition, run, content) {
   if (condition === undefined || condition === null) return true;
   assert(object(condition) && Object.keys(condition).length === 1, '条件の形式が不正です。');
@@ -55,6 +87,14 @@ export function evaluateCondition(condition, run, content) {
     // Evaluate every branch to reject malformed data even in a short-circuited branch.
     const results = value.map(item => evaluateCondition(item, run, content));
     return key === 'all' ? results.every(Boolean) : results.some(Boolean);
+  }
+  const endingValues={endingRankIs:['high','normal','other'],sovereigntyIs:['win','other'],
+    sovereignIs:Object.keys(content.commanders),governanceIs:content.officialEnding?.governanceKeys||[]};
+  if(own(endingValues,key)) {
+    assert(content.officialEnding&&endingValues[key].includes(value),'正式終幕の条件が不正です。');
+    const result=run.endingResult;
+    return !!result && ({endingRankIs:result.rank,sovereigntyIs:result.sovereignId===run.commanderId?'win':'other',
+      sovereignIs:result.sovereignId,governanceIs:result.governanceKey})[key]===value;
   }
   const dictionaries = { commanderIs: content.commanders, partyHas: content.characters, conversationHeard: content.conversations, infoAcquired: content.information, trialResolved: content.trials, regionCompleted: content.regions, eventCompleted: content.storyEvents };
   assert(own(dictionaries, key) && string(value) && own(dictionaries[key], value), '不明な条件または参照IDです。');
@@ -113,7 +153,8 @@ export function getCurrentText(run, content) {
   }
   // A changed substitution must never inherit another party's read status.
   const variant = text === block.text ? '' : `:${encodeURIComponent(text)}`;
-  return { ...block, text, readKey: `${block.id}@${block.textRevision}${variant}` };
+  const illustration=block.readBySovereign&&run.endingResult?`:sovereign=${run.endingResult.sovereignId}`:'';
+  return { ...block, text, readKey: `${block.id}@${block.textRevision}${variant}${illustration}` };
 }
 
 export function getCurrentTextPage(run, content) {
@@ -168,6 +209,7 @@ export function canUseTheo(run, content) {
 export function canManualSave(run, content) {
   const p = run.position;
   return p.phase === 'map' || p.phase === 'trialResult' ||
+    (p.phase === 'ending' && !!content?.officialEnding) ||
     (p.phase === 'storyEvent' && content?.scenes[p.sceneId]?.allowManualSave === true) ||
     (p.phase === 'trial' && ((p.stage === 'intro' && p.blockIndex === 0) || p.stage === 'decision'));
 }
@@ -240,6 +282,7 @@ function finishBlockSequence(run, content) {
     case 'chapterClosing': {
       run.chapterProgress[p.regionId] = { status: 'completed' };
       if (content.regions[p.regionId].kind === 'final' && content.finalChapterCompletion !== 'map') {
+        if(content.officialEnding)run.endingResult=getSuccessionResult(run,content);
         run.position = content.endingSceneId ? { phase: 'ending', sceneId: content.endingSceneId, blockIndex: 0 } : { phase: 'ending' };
       } else enterMap(run, content);
       return true;
@@ -547,6 +590,7 @@ function validatePosition(position, run, content, nested = false) {
     const event = content.storyEvents[p.eventId];
     assert(event && run.storyEvents[p.eventId]?.status === 'inProgress' && (sceneInChain(p.sceneId, event.entrySceneId, content) || sceneInChain(p.sceneId, event.presentationEntrySceneId, content) || sceneInChain(p.sceneId, event.completionSceneId, content)), 'イベント位置が不正です。');
   }
+  if(p.phase==='ending'&&content.officialEnding)assert(sceneInChain(p.sceneId,content.endingSceneId,content),'正式終幕の場面が不正です。');
 }
 
 export function validateRun(run, content) {
@@ -676,6 +720,11 @@ export function validateRun(run, content) {
     assert(run.mode === 'full' && Object.keys(content.regions).length === 5 && Object.values(run.chapterProgress).every(progress => progress.status === 'completed'), '全章未完了で継承判定へ到達しています。');
   }
   if (run.endingSnapshot !== undefined) assert(object(run.endingSnapshot) && ['ending', 'completed'].includes(run.position.phase), '終幕記録が不正です。');
+  if(content.officialEnding && ['ending','completed'].includes(run.position.phase)) {
+    assert(Object.keys(run.trialResults).length===Object.keys(content.trials).length,'正式終幕の試練が未完了です。');
+    assert(JSON.stringify(run.endingResult)===JSON.stringify(getSuccessionResult(run,content)),'確定した王位結果が試練記録と一致しません。');
+    if(run.position.phase==='completed')assert(run.completionKey&&run.endingSnapshot?.sovereignId===run.endingResult.sovereignId&&run.endingSnapshot?.rank===run.endingResult.rank,'正式終幕の完了記録がありません。');
+  } else assert(run.endingResult===undefined,'正式終幕以外に王位結果があります。');
   if (run.completionKey !== undefined) assert(string(run.completionKey) && run.endingSnapshot && ['ending', 'completed'].includes(run.position.phase), '完了キーが不正です。');
   for (const key of ['totalScore', 'theoRemaining', 'opponentParty', 'readTextKeys', 'readerProfile', 'chronicles']) assert(!own(run, key), '周回と共通保存、導出値は分離してください。');
   validatePosition(run.position, run, content);

@@ -1,4 +1,5 @@
-import { content as current } from './prologue.js';
+import { content as current } from './ending.js';
+import { content as prologue } from './prologue.js';
 import { content as dialogueUnified } from './companion-dialogue-unified.js';
 import { content as ehrenfels } from './ehrenfels.js';
 import { content as rude } from './rude.js';
@@ -14,6 +15,7 @@ export const defaultContent = current;
 export function contentForRun(run) {
   if (run?.contentVersion === legacy.contentVersion) return legacy;
   if (run?.contentVersion === current.contentVersion) return current;
+  if (run?.contentVersion === prologue.contentVersion) return prologue;
   if (run?.contentVersion === dialogueUnified.contentVersion) return dialogueUnified;
   if (run?.contentVersion === ehrenfels.contentVersion) return ehrenfels;
   if (run?.contentVersion === rude.contentVersion) return rude;

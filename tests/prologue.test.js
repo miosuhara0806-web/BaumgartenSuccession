@@ -21,8 +21,9 @@ const gameData = r => ({ chapterProgress: r.chapterProgress, trialResults: r.tri
   heardConversationIds: r.heardConversationIds, acquiredInformation: r.acquiredInformation, theoInvestigations: r.theoInvestigations, storyEvents: r.storyEvents });
 const roundtrip = r => { const copy = JSON.parse(JSON.stringify(r)); engine.validateRun(copy, contentForRun(copy)); assert.deepEqual(copy, r); return copy; };
 
-test('new default preserves gameplay and historical blocks except audited display copy edits', () => {
-  assert.equal(defaultContent, content);
+test('accepted prologue edition preserves gameplay and historical blocks except audited display copy edits', () => {
+  assert.equal(contentForRun(engine.createRun(content)), content);
+  assert.notEqual(defaultContent.contentVersion, content.contentVersion);
   assert.equal(contentForRun(engine.createRun(previous)), previous);
   for (const key of ['characters', 'commanders', 'regions', 'trials', 'conversations', 'information', 'investigations']) assert.deepEqual(content[key], previous[key], key);
   for (const [id,value] of Object.entries(previous.scenes)) assert.deepEqual(content.scenes[id],value,id);
