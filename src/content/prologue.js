@@ -36,6 +36,13 @@ export function createPrologueContent() {
   }
   const both = rows => ['commander.alphonse', 'commander.rosemond'].flatMap(id => variant(rows, id));
   content.introSceneId = scene('prologue.declaration', '継承戦の宣言', manuscript.intro);
+  // Shared, before protagonist selection. Presentation never advances the story.
+  content.scenes[content.introSceneId].eventCg = {
+    src: './src/assets/王宮で向き合う双子の貴族.png',
+    alt: '王宮で向き合うアルフォンスとローズモンド。',
+    width: 1672, height: 941,
+    blockIds: content.scenes[content.introSceneId].blocks.slice(3, 7),
+  };
   const locations = Object.fromEntries([
     ['warehouse', '王城倉庫', '銀製の式典飾りは確かに保管されていた。しかし前日に「西棟へ運ぶよう指示され、すでに倉庫から搬出済み」であることが判明する。記録にも搬出先として西棟が記されている。'],
     ['servants', '使用人詰所', '使用人は「倉庫から西棟まで飾りを運び、西棟の保管担当者へ渡した」と証言する。ただし「その後、式典準備室へ運ぶようには指示されていない」。'],

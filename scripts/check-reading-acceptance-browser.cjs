@@ -7,7 +7,7 @@ const path = require('node:path');
   const {content}=await import('../src/content/prologue.js');
   const h=await import('../tests/helpers/prologue.js');
   const e=await import('../src/engine.js');
-  const out=path.resolve(process.env.READING_BROWSER_OUTPUT||'../preview/dialogue-icons-20261101/browser');
+  const out=path.resolve(process.env.READING_BROWSER_OUTPUT||'../preview/prologue-cg-20261101/browser');
   const url=process.env.READING_BROWSER_URL||'http://127.0.0.1:4173/';
   await mkdir(out,{recursive:true});
   const report={url,scenarios:[],errors:[]};
@@ -64,6 +64,20 @@ const path = require('node:path');
     const sizes=await images.evaluateAll(list=>list.map(img=>img.parentElement.getBoundingClientRect().width));
     assert.ok(sizes.every(size=>size>=32&&size<=36));
   }
+  async function cgLayout(page){
+    const img=page.locator('.event-cg img');
+    assert.equal(await img.count(),1);await img.evaluate(el=>el.decode());
+    const box=await img.evaluate(el=>{
+      const r=el.getBoundingClientRect(),text=document.querySelector('.dialogue-panel').getBoundingClientRect();
+      return {width:r.width,height:r.height,left:r.left,right:r.right,bottom:r.bottom,textTop:text.top,
+        naturalWidth:el.naturalWidth,naturalHeight:el.naturalHeight,viewport:innerWidth};
+    });
+    assert.equal(box.naturalWidth,1672);assert.equal(box.naturalHeight,941);
+    assert.ok(Math.abs(box.width/box.height-1672/941)<0.01);
+    assert.ok(box.width>=(box.viewport>760?800:300));
+    assert.ok(box.left>=0&&box.right<=box.viewport&&box.bottom<=box.textTop);
+    await layout(page);
+  }
   try{
     for(const[label,viewport,commanderId]of[
       ['pc-alphonse',{width:1440,height:1000},'commander.alphonse'],
@@ -74,10 +88,21 @@ const path = require('node:path');
       const context=await browser.newContext({viewport});const page=await context.newPage();
       page.on('pageerror',error=>report.errors.push(error.message));
       const name=content.commanders[commanderId].name;
-      await page.goto(url);await click(page,'new');await click(page,'ack-page');
+      await page.goto(url);await click(page,'new');
+      assert.equal(await page.locator('.event-cg').count(),0);
+      await click(page,'ack-page');
+      assert.equal(await page.locator('.event-cg').count(),0);
       await icons(page,'.speaker',1);
       assert.match(await page.locator('.speaker img').getAttribute('src'),/kingdom-emblem\.svg$/);
       await click(page,'ack-page');
+      await cgLayout(page);
+      const reviewBefore=await stored(page);
+      await click(page,'read-prev');assert.equal(await page.locator('.event-cg').count(),0);
+      await click(page,'read-forward');await cgLayout(page);
+      assert.deepEqual(await stored(page),reviewBefore);
+      const cgSaved=await stored(page);
+      await resume(page);assert.deepEqual((await stored(page)).slot.run,cgSaved.slot.run);
+      await cgLayout(page);
       assert.deepEqual(await page.locator('.dialogue-turn .speaker').allTextContents(),['アルフォンス','ローズモンド','アルフォンス','ローズモンド']);
       await icons(page,'.dialogue-turn',4);
       assert.ok(await page.locator('.dialogue-turn').evaluateAll(list=>list.every(el=>{
@@ -85,8 +110,14 @@ const path = require('node:path');
       })));
       await layout(page);await page.screenshot({path:path.join(out,`${label}-twins.png`),fullPage:true});
       const before=await stored(page);await click(page,'ack-page');
+      assert.equal(await page.locator('.event-cg').count(),0);
       assert.equal((await stored(page)).slot.run.recentDialogueLog.length,before.slot.run.recentDialogueLog.length+4);
-      await review(page);await read(page);await click(page,'select-commander',commanderId);await read(page);
+      // Reading history is reset by load, so use the newly acknowledged CG page.
+      const afterCg=await stored(page);
+      await click(page,'read-prev');await cgLayout(page);
+      await click(page,'read-forward');assert.equal(await page.locator('.event-cg').count(),0);
+      assert.deepEqual(await stored(page),afterCg);
+      await read(page);await click(page,'select-commander',commanderId);await read(page);
       for(const id of ['warehouse','servants','preparation']){await click(page,'tutorial-location',id);await read(page);}
       await click(page,'tutorial-choice','b');
       const success=await page.locator('.dialogue-text').textContent();
@@ -158,7 +189,18 @@ const path = require('node:path');
       assert.ok(await page.locator('.story-parties .member span:last-child').evaluateAll(list=>list.every(el=>el.textContent.length>1)));
       assert.equal(await page.locator(q('ack-page')).isEnabled(),true);
       await layout(page);
+      // An unavailable CG must never gate the existing story/selection/tutorial flow.
+      await page.route(url=>decodeURIComponent(url.pathname).endsWith('/王宮で向き合う双子の貴族.png'),route=>route.abort());
+      const brokenCg=e.createRun(content);brokenCg.position.blockIndex=3;
+      await seed(page,brokenCg);
+      await page.locator('.event-cg-fallback').waitFor({state:'visible'});
+      assert.equal(await page.locator(q('ack-page')).isEnabled(),true);
+      await read(page);assert.equal((await stored(page)).slot.run.position.phase,'commanderSelection');
+      await click(page,'select-commander',commanderId);await read(page);
+      assert.equal((await stored(page)).slot.run.position.stage,'investigate');
+      assert.equal(await page.locator('.event-cg').count(),0);
       report.scenarios.push({label,commanderId,groupedDeclarationTurns:4,feedbackChoices:results,
+        cgShared:true,cgAspectRatio:true,cgResume:true,cgReview:true,cgFailureProgress:true,
         courtPages:courtMixed,officialIcons:true,missingImageNames:true,reviewReadOnly:true,departureName:true,freeSelection:true,tutorial:true,reunionResume:true,status:'passed'});
       await context.close();
     }

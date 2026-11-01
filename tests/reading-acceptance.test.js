@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import * as engine from '../src/engine.js';
 import { content, createPrologueContent } from '../src/content/prologue.js';
 import { contentForRun } from '../src/content/catalog.js';
@@ -26,13 +27,57 @@ async function harness(snapshot,pack=content) {
       state(){return structuredClone({run,reader,revision,pending:!!pending,readingPreviewIndex,history:readingHistory.length});},
       previewPage(){return getCurrentTextPage(readingPreviewIndex===null?run:readingHistory[readingPreviewIndex],content);},
       panel(){return dialoguePanel(getCurrentTextPage(run,content));},
-      handle,perform,trialSidebar,load,openSaves,faceIcon,speakerLabel,member
+      handle,perform,trialSidebar,load,openSaves,faceIcon,speakerLabel,member,storyPage
     };
   `).runInContext(context);
   context.api.initialize(snapshot,saved);
   return {app:context.api,storage};
 }
 const atBlock=(sceneId,index,commanderId)=>({ ...start(undefined,commanderId),position:{phase:'departure',sceneId,blockIndex:index} });
+
+test('the original palace CG is confined to the shared twins exchange, including old per-block positions',async()=>{
+  const scene=content.scenes[content.introSceneId], cg=scene.eventCg;
+  const image=await readFile(new URL(`../${cg.src.replace('./','')}`,import.meta.url));
+  assert.equal(createHash('sha256').update(image).digest('hex'),'6e4ff1479c0a4412d628b892e9c0074fded5804f5d3c911f078983390a9f9bd0');
+  assert.equal(image.readUInt32BE(16),cg.width);assert.equal(image.readUInt32BE(20),cg.height);
+  assert.deepEqual(cg.blockIds,scene.blocks.slice(3,7));
+  for(let blockIndex=0;blockIndex<scene.blocks.length;blockIndex++) {
+    const r={...engine.createRun(content),position:{phase:'intro',sceneId:scene.id,blockIndex}};
+    const {app}=await harness(r), html=app.storyPage();
+    assert.equal(html.includes('class="event-cg"'),blockIndex>=3&&blockIndex<=6);
+    if(blockIndex>=3&&blockIndex<=6) {
+      assert.ok(html.includes(`src="${cg.src}"`));
+      assert.ok(html.indexOf('class="event-cg"')<html.indexOf('class="dialogue-panel"'));
+      assert.match(html,/width="1672" height="941"/);
+    }
+    assert.deepEqual(app.state().run,r);assert.deepEqual(app.state().reader.readTextKeys,[]);
+  }
+  const {app}=await harness(atBlock('prologue.court',27,'commander.rosemond'));
+  assert.doesNotMatch(app.storyPage(),/class="event-cg"/);
+});
+
+test('CG presentation leaves auto resume, page acknowledgement, read keys and the protagonist selection unchanged',async()=>{
+  const withoutCg=structuredClone(content);delete withoutCg.scenes[content.introSceneId].eventCg;
+  for(let blockIndex=3;blockIndex<=6;blockIndex++) {
+    const r={...engine.createRun(content),position:{phase:'intro',sceneId:content.introSceneId,blockIndex}};
+    const shown=engine.getCurrentTextPage(r,content);
+    assert.deepEqual(shown,engine.getCurrentTextPage(r,withoutCg));
+    const {app,storage}=await harness(r);
+    await app.load('auto');assert.deepEqual(app.state().run,r);
+    assert.match(app.storyPage(),/class="event-cg"/);
+    await app.handle('ack-page');
+    const expected=shown.reduce(state=>act(state,'ACK_TEXT',{},withoutCg),r), after=app.state();
+    assert.deepEqual(after.run,expected);
+    assert.deepEqual((await storage.getSlot('auto')).run,expected);
+    assert.deepEqual(after.reader.readTextKeys,[...new Set(shown.map(b=>b.readKey))]);
+    assert.doesNotMatch(app.storyPage(),/class="event-cg"/);
+    await app.handle('read-prev');await app.handle('read-forward');
+    assert.deepEqual(app.state().run,after.run);assert.deepEqual(app.state().reader,after.reader);
+    assert.equal(app.state().revision,after.revision);
+    await app.handle('ack-page');assert.equal(app.state().run.position.phase,'commanderSelection');
+    assert.equal(app.state().run.commanderId,null);
+  }
+});
 
 test('all reviewed protagonist narration and existing commander placeholders render both names, without replacing general UI nouns',async()=>{
   assert.equal(protagonistNarrationEdits.length,17);

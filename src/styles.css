@@ -271,3 +271,10 @@
 .emblem-icon img { width:100%; height:100%; object-fit:contain; padding:3px; }
 .face-icon img.image-unavailable { display:none; }
 @media(max-width:760px) { .face-icon { width:32px; height:32px; } }
+
+/* Full original CG above the text; neither crops nor overlays. */
+.event-cg { margin:0 0 20px; background:var(--wash); border:1px solid var(--line); }
+.event-cg img { display:block; width:100%; height:auto; }
+.event-cg-fallback { display:none; padding:16px; margin:0; font-size:.85rem; color:var(--muted); }
+.event-cg img.image-unavailable { display:none; }
+.event-cg:has(img.image-unavailable) .event-cg-fallback { display:block; }

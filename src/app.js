@@ -295,6 +295,11 @@ function trialPage() {
   const canReturn=(p.phase==='trial'&&p.stage==='decision')||(p.phase==='trialResult'&&p.stage==='done');
   return `<main class="page">${pageHeading(regionId?`${esc(regionName(regionId))} / 試練の記録`:'旅のはじまり',esc(heading),'',canReturn?button('地図へ一時帰還','return-map','', 'compact'):'')}${trial?`<div class="chapter-path">${content.regions[trial.regionId].trialIds.map((id,i)=>`<span class="${id===trial.id?'active':''}">${i<2?`小試練 ${i+1}`:'大試練'}</span>`).join('')}</div>`:''}<div class="trial-layout"><div class="trial-main">${body}<div style="margin-top:20px">${fixtureNote()}</div></div>${trialSidebar()}</div></main>`;
 }
+function storyEventCg(page) {
+  const cg=content.scenes[run.position.sceneId]?.eventCg;
+  if(!cg || !page.some(block=>cg.blockIds.includes(block.id))) return '';
+  return `<figure class="event-cg"><img src="${esc(cg.src)}" alt="${esc(cg.alt)}" width="${cg.width}" height="${cg.height}" decoding="async"><p class="event-cg-fallback">序章の挿絵を読み込めませんでした。本文はそのまま読み進められます。</p></figure>`;
+}
 function storyPage() {
   const page=getCurrentTextPage(run,content);
   const block=page[0];
@@ -303,7 +308,7 @@ function storyPage() {
     const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
     const showParties=event || run.position.phase === 'departure';
     const parties=showParties?`<div class="camp-grid story-parties"><section class="panel"><h3>${esc(nameOf(run.commanderId))}の一行</h3>${run.partyIds.map(id=>member(character(id))).join('')}</section><section class="panel"><h3>${esc(rival.name)}の一行</h3>${getOpponentParty(run,content).map(member).join('')}</section></div>`:'';
-    return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${block?dialoguePanel(page):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
+    return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${storyEventCg(page)}${block?dialoguePanel(page):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
   }
   return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(page):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
 }
@@ -626,7 +631,7 @@ async function handle(action,id) {
   }
 }
 app.addEventListener('error', event=>{
-  if (event.target.matches?.('.official-portrait img, .face-icon img')) event.target.classList.add('image-unavailable');
+  if (event.target.matches?.('.official-portrait img, .face-icon img, .event-cg img')) event.target.classList.add('image-unavailable');
 }, true);
 app.addEventListener('click', event=>{
   const target=event.target.closest('button[data-action]');
