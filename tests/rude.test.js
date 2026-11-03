@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { withApprovedHonorifics } from './helpers/approved-honorifics.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -67,8 +68,8 @@ test('saved Rude runs retain the four-city edition; all 55 prose fields match th
     const n = i + 4, id = `rude.${row.key}`, trial = content.trials[id];
     const introduction = stripProvenance(originalSection(`${n}.1`));
     assert.equal(createHash('sha256').update(introduction).digest('hex'), hashes[i]);
-    assert.equal(row.introduction, introduction);
-    assert.equal(content.textBlocks[`text.${id}.introduction`].text, normalize(introduction)); verified++;
+    assert.equal(row.introduction, withApprovedHonorifics(introduction));
+    assert.equal(content.textBlocks[`text.${id}.introduction`].text, normalize(withApprovedHonorifics(introduction))); verified++;
     const choices = sourceRows(`${n}.2`), results = sourceRows(`${n}.3`), memos = sourceRows(`${n}.5`);
     assert.equal(choices.length, 3); assert.equal(results.length, 3); assert.equal(memos.length, 3);
     for (const [j, choice] of trial.choices.entries()) {
@@ -319,7 +320,7 @@ test('a partially read conversation cannot skip its unread tail, and the narrati
   r=act(r,'ACK_TEXT');
   const {app}=await harness(r,[first.readKey]);
   const html=app.trialPage();
-  assert.ok(html.includes('<div class="speaker">オリヴェル</div>'));
+  assert.match(html, /<div class="speaker">[\s\S]*?<span>オリヴェル<\/span><\/div>/);
   assert.ok(html.includes('aria-label="地の文"'));
   assert.ok(html.includes('aria-label="オリヴェルの台詞"'));
   const before=app.state(); await app.handle('skip'); assert.deepEqual(app.state(),before);

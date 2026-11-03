@@ -74,8 +74,8 @@ test('26 titles, all 130 paragraphs and speaker assignments match the approved s
 });
 
 test('the new edition changes only contentVersion, the 26 presentation fields and 52 new narration blocks', () => {
-  assert.equal(defaultContent, content);
-  assert.equal(contentForRun(engine.createRun(defaultContent)), content);
+  assert.equal(contentForRun(engine.createRun(content)), content);
+  assert.notEqual(defaultContent.contentVersion, content.contentVersion);
   const restored = structuredClone(content);
   restored.contentVersion = old.contentVersion;
   for (const id of targets) restored.conversations[id] = structuredClone(old.conversations[id]);

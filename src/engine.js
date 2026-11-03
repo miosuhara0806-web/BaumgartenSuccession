@@ -1,6 +1,8 @@
 // Pure, serializable game state. Persistence and cross-run read history live elsewhere.
+import { drawMapReturn } from './map-return.js';
+export { getMapReturnChatter } from './map-return.js';
 export const GOVERNANCE_TAGS = Object.freeze(['people', 'reform', 'stability', 'coordination', 'fairness']);
-const SETUP_PHASES = new Set(['intro', 'commanderSelection', 'draft', 'partyConfirmation']);
+const SETUP_PHASES = new Set(['intro', 'commanderSelection', 'tutorial', 'draft', 'partyConfirmation']);
 const PHASES = new Set([...SETUP_PHASES, 'departure', 'map', 'trial', 'conversation', 'theoReport', 'trialResult', 'chapterClosing', 'storyEvent', 'ending', 'completed']);
 const ROLE_LIMITS = { melee: 2, ranged: 1, healer: 1 };
 const clone = value => structuredClone(value);
@@ -15,6 +17,8 @@ const completedCount = (run, content) => normalRegions(content).filter(region =>
 const activeRegionId = run => Object.keys(run.chapterProgress).find(id => run.chapterProgress[id].status === 'active');
 const mainPosition = run => run.position.returnPosition || run.position;
 const sceneKnown = (id, content) => id === 'map' || own(content.scenes, id);
+const mapReturnTrialAllowed = (trial, content) => !!trial &&
+  !(content.regions[trial.regionId].kind === 'final' && trial.kind === 'major');
 
 export function isLegalParty(partyIds, content) {
   return unique(partyIds) && partyIds.length === 4 && partyIds.every(id => own(content.characters, id)) &&
@@ -46,6 +50,38 @@ export function getGovernance(run, content) {
   return { kind: dominantTags.length === 1 ? 'single' : dominantTags.length === 2 ? 'dual' : 'balanced', dominantTags: dominantTags.length > 2 ? [] : dominantTags, counts };
 }
 
+export function getSuccessionResult(run, content) {
+  assert(content.officialEnding, '正式終幕の内容版ではありません。');
+  const finalScore=getTotalScore(run),governance=getGovernance(run,content);
+  const rank=finalScore>=90?'high':finalScore>=80?'normal':'other';
+  const sovereignId=rank==='other'?Object.keys(content.commanders).find(id=>id!==run.commanderId):run.commanderId;
+  return {rulesVersion:content.officialEnding.rulesVersion,finalScore,rank,sovereignId,
+    governance,governanceKey:governance.kind==='balanced'?'balanced':[...governance.dominantTags].sort().join('+')};
+}
+
+export function buildEndingRecord(run, content) {
+  assert(content.officialEnding&&run.endingResult,'正式終幕の結果がありません。');
+  const texts=[],ensemble=[];let sceneId=content.endingSceneId;
+  while(sceneId) {
+    const scene=content.scenes[sceneId];
+    for(let blockIndex=0;blockIndex<scene.blocks.length;blockIndex++) {
+      const block=getCurrentText({...run,position:{phase:'ending',sceneId,blockIndex}},content);
+      if(block)(sceneId==='ending.ensemble'?ensemble:texts).push(block);
+    }
+    sceneId=scene.nextSceneId;
+  }
+  const result=run.endingResult;
+  const submittedPolicies=Object.fromEntries(Object.values(content.trials).filter(t=>t.kind==='major').map(t=>{
+    const choice=t.choices.find(c=>c.id===run.trialResults[t.id].choiceId);
+    return [t.regionId,{policyId:choice.policyId||choice.id,labelAtCompletion:choice.label}];
+  }));
+  return {contentStatus:'reviewed',endingRulesVersion:result.rulesVersion,sovereignId:result.sovereignId,
+    finalScore:result.finalScore,rank:result.rank,outcome:content.commanders[result.sovereignId].name,
+    governance:clone(result.governance),submittedPolicies,epilogueSnapshot:texts.map(b=>b.text).join('\n\n'),
+    ensembleAfterwordSnapshot:ensemble.map(b=>b.text).join('\n\n'),
+    companionAfterwordSnapshots:Object.fromEntries(run.partyIds.map(id=>[id,ensemble.filter(b=>b.speakerId===id).map(b=>b.text).join('\n\n')]))};
+}
+
 export function evaluateCondition(condition, run, content) {
   if (condition === undefined || condition === null) return true;
   assert(object(condition) && Object.keys(condition).length === 1, '条件の形式が不正です。');
@@ -55,6 +91,14 @@ export function evaluateCondition(condition, run, content) {
     // Evaluate every branch to reject malformed data even in a short-circuited branch.
     const results = value.map(item => evaluateCondition(item, run, content));
     return key === 'all' ? results.every(Boolean) : results.some(Boolean);
+  }
+  const endingValues={endingRankIs:['high','normal','other'],sovereigntyIs:['win','other'],
+    sovereignIs:Object.keys(content.commanders),governanceIs:content.officialEnding?.governanceKeys||[]};
+  if(own(endingValues,key)) {
+    assert(content.officialEnding&&endingValues[key].includes(value),'正式終幕の条件が不正です。');
+    const result=run.endingResult;
+    return !!result && ({endingRankIs:result.rank,sovereigntyIs:result.sovereignId===run.commanderId?'win':'other',
+      sovereignIs:result.sovereignId,governanceIs:result.governanceKey})[key]===value;
   }
   const dictionaries = { commanderIs: content.commanders, partyHas: content.characters, conversationHeard: content.conversations, infoAcquired: content.information, trialResolved: content.trials, regionCompleted: content.regions, eventCompleted: content.storyEvents };
   assert(own(dictionaries, key) && string(value) && own(dictionaries[key], value), '不明な条件または参照IDです。');
@@ -113,7 +157,37 @@ export function getCurrentText(run, content) {
   }
   // A changed substitution must never inherit another party's read status.
   const variant = text === block.text ? '' : `:${encodeURIComponent(text)}`;
-  return { ...block, text, readKey: `${block.id}@${block.textRevision}${variant}` };
+  const illustration=block.readBySovereign&&run.endingResult?`:sovereign=${run.endingResult.sovereignId}`:'';
+  return { ...block, text, readKey: `${block.id}@${block.textRevision}${variant}${illustration}` };
+}
+
+export function getCurrentTextPage(run, content) {
+  const first = getCurrentText(run, content);
+  if (!first) return [];
+  const ids = blockIdsFor(run, content);
+  const ends = run.position.phase === 'ending' && content.scenes[run.position.sceneId]?.readingPageEnds;
+  if (ends) {
+    const end = ends.find(index => index > run.position.blockIndex);
+    return ids.slice(run.position.blockIndex, end).map((_, offset) => getCurrentText({
+      ...run, position: { ...run.position, blockIndex: run.position.blockIndex + offset },
+    }, content)).filter(Boolean);
+  }
+  const speakerId = first.speakerId || null;
+  const group = first.pageGroup;
+  let characters = first.text.length;
+  const page = [first];
+  for (let blockIndex = run.position.blockIndex + 1; blockIndex < ids.length; blockIndex++) {
+    const candidate = getCurrentText({ ...run, position: { ...run.position, blockIndex } }, content);
+    if (!candidate) continue;
+    if (candidate.pageBreakBefore) break;
+    if (group) {
+      if (candidate.pageGroup !== group || page.length >= 4 || first.text.length > 120 ||
+        candidate.text.length > 120 || characters + candidate.text.length > 220) break;
+    } else if (candidate.pageGroup || (candidate.speakerId || null) !== speakerId) break;
+    page.push(candidate);
+    characters += candidate.text.length;
+  }
+  return page;
 }
 
 export function getAvailableChoices(run, content) {
@@ -143,9 +217,11 @@ export function canUseTheo(run, content) {
     !run.theoInvestigations[region.id] && getTheoRemaining(run) > 0;
 }
 
-export function canManualSave(run) {
+export function canManualSave(run, content) {
   const p = run.position;
   return p.phase === 'map' || p.phase === 'trialResult' ||
+    (p.phase === 'ending' && !!content?.officialEnding) ||
+    (p.phase === 'storyEvent' && content?.scenes[p.sceneId]?.allowManualSave === true) ||
     (p.phase === 'trial' && ((p.stage === 'intro' && p.blockIndex === 0) || p.stage === 'decision'));
 }
 
@@ -162,10 +238,11 @@ function beginTrial(run, trial, content, useRegionEntry = false) {
     sceneId, blockIndex: 0 };
 }
 
-function enterMap(run, content) {
+function enterMap(run, content, returnKey = null) {
   const inProgress = Object.entries(run.storyEvents).find(([, event]) => event.status === 'inProgress');
   assert(!inProgress, '進行中イベントを地図で上書きできません。');
   run.position = { phase: 'map' };
+  if (content.mapReturnLines) run.mapReturnChatter.currentKey = null;
   // These triggers are data extensions for independent full-game fixtures; absent in Alba.
   const count = completedCount(run, content);
   const candidates = Object.values(content.storyEvents).sort((a, b) => (a.trigger === 'afterTwoRegions' ? 0 : 1) - (b.trigger === 'afterTwoRegions' ? 0 : 1));
@@ -173,7 +250,12 @@ function enterMap(run, content) {
     ((item.trigger === 'afterTwoRegions' && count >= 2) || (item.trigger === 'beforeFinal' && count >= 4)));
   if (event) {
     run.storyEvents[event.id] = { status: 'inProgress' };
-    run.position = { phase: 'storyEvent', eventId: event.id, sceneId: event.entrySceneId, blockIndex: 0 };
+    run.position = { phase: 'storyEvent', eventId: event.id, sceneId: event.presentationEntrySceneId || event.entrySceneId, blockIndex: 0 };
+  } else if (content.mapReturnLines && returnKey) {
+    const chatter = run.mapReturnChatter;
+    // null is a recorded miss, not a request to draw again.
+    if (!own(chatter.draws, returnKey)) chatter.draws[returnKey] = drawMapReturn(run, returnKey);
+    chatter.currentKey = returnKey;
   }
 }
 
@@ -186,6 +268,17 @@ function finishBlockSequence(run, content) {
   }
   switch (p.phase) {
     case 'intro': run.position = { phase: 'commanderSelection' }; return false;
+    case 'tutorial': {
+      if (p.stage === 'location') {
+        if (!run.tutorial.investigatedLocationIds.includes(p.locationId)) run.tutorial.investigatedLocationIds.push(p.locationId);
+        run.tutorial.judgmentUnlocked = Object.keys(content.prologue.tutorial.locations).every(id => run.tutorial.investigatedLocationIds.includes(id));
+      }
+      if (p.stage === 'success') {
+        run.tutorial.postSuccessProcessed = true;
+        run.position = { phase: 'draft' };
+      } else run.position = { phase: 'tutorial', stage: 'investigate' };
+      return false;
+    }
     case 'departure': enterMap(run, content); return true;
     case 'trial':
       if (p.stage === 'decision') return false;
@@ -206,8 +299,9 @@ function finishBlockSequence(run, content) {
     case 'chapterClosing': {
       run.chapterProgress[p.regionId] = { status: 'completed' };
       if (content.regions[p.regionId].kind === 'final' && content.finalChapterCompletion !== 'map') {
+        if(content.officialEnding)run.endingResult=getSuccessionResult(run,content);
         run.position = content.endingSceneId ? { phase: 'ending', sceneId: content.endingSceneId, blockIndex: 0 } : { phase: 'ending' };
-      } else enterMap(run, content);
+      } else enterMap(run, content, content.regions[p.regionId].kind === 'normal' ? `region:${p.regionId}` : null);
       return true;
     }
     case 'storyEvent': {
@@ -240,6 +334,8 @@ export function createRun(content, { runId = globalThis.crypto.randomUUID(), now
     position: { phase: 'intro', sceneId: content.introSceneId, blockIndex: 0 },
     chapterProgress: Object.fromEntries(Object.keys(content.regions).map(id => [id, { status: 'notStarted' }])),
     trialResults: {}, heardConversationIds: [], acquiredInformation: {}, theoInvestigations: {}, storyEvents: {}, recentDialogueLog: [],
+    ...(content.prologue ? { tutorial: { started: false, investigatedLocationIds: [], judgmentUnlocked: false, completed: false, postSuccessProcessed: false } } : {}),
+    ...(content.mapReturnLines ? { mapReturnChatter: { currentKey: null, draws: {} } } : {}),
   };
   normalize(run, content);
   validateRun(run, content);
@@ -267,7 +363,30 @@ export function transition(current, action, content) {
     }
     case 'SELECT_COMMANDER':
       assert(['commanderSelection', 'draft'].includes(p.phase) && own(content.commanders, action.commanderId), '指揮官を選べません。');
-      run.commanderId = action.commanderId; run.position = { phase: 'draft' }; break;
+      assert(!content.prologue || p.phase === 'commanderSelection', '主人公は既に決定しています。');
+      run.commanderId = action.commanderId;
+      if (content.prologue) {
+        run.tutorial.started = true;
+        run.position = { phase: 'tutorial', stage: 'opening', sceneId: content.prologue.tutorial.entrySceneId, blockIndex: 0 };
+        normalize(run, content);
+      } else run.position = { phase: 'draft' };
+      break;
+    case 'INSPECT_TUTORIAL_LOCATION': {
+      assert(content.prologue && p.phase === 'tutorial' && p.stage === 'investigate', '今は調査できません。');
+      const location = content.prologue.tutorial.locations[action.locationId];
+      assert(location, '調査地点が不明です。');
+      run.position = { phase: 'tutorial', stage: 'location', locationId: location.id, sceneId: location.sceneId, blockIndex: 0 };
+      normalize(run, content); break;
+    }
+    case 'DECIDE_TUTORIAL': {
+      assert(content.prologue && p.phase === 'tutorial' && p.stage === 'investigate' && run.tutorial.judgmentUnlocked && !run.tutorial.completed, '3地点の調査を終えてから判断してください。');
+      assert(['a', 'b', 'c'].includes(action.choiceId), '判断が不正です。');
+      const correct = action.choiceId === 'b';
+      if (correct) run.tutorial.completed = true;
+      run.position = { phase: 'tutorial', stage: correct ? 'success' : 'feedback',
+        sceneId: correct ? content.prologue.tutorial.successSceneId : content.prologue.tutorial.feedbackSceneIds[action.choiceId], blockIndex: 0 };
+      normalize(run, content); break;
+    }
     case 'TOGGLE_PARTY': {
       assert(p.phase === 'draft' && own(content.characters, action.characterId), '同行者を変更できません。');
       if (run.partyIds.includes(action.characterId)) run.partyIds = run.partyIds.filter(id => id !== action.characterId);
@@ -339,9 +458,14 @@ export function transition(current, action, content) {
       normalize(run, content); break;
     }
     case 'RETURN_MAP':
-      if (p.phase === 'map') { enterMap(run, content); normalize(run, content); break; }
+      if (p.phase === 'map') {
+        if (!content.mapReturnLines) { enterMap(run, content); normalize(run, content); }
+        break;
+      }
       assert((p.phase === 'trial' && p.stage === 'decision' && !getCurrentText(run, content)) || (p.phase === 'trialResult' && p.stage === 'done'), '試練の区切りで地図へ戻れます。');
-      run.chapterProgress[p.regionId].resumePosition = clone(p); enterMap(run, content); normalize(run, content); break;
+      run.chapterProgress[p.regionId].resumePosition = clone(p);
+      enterMap(run, content, p.phase === 'trialResult' && mapReturnTrialAllowed(content.trials[p.trialId], content) ? `trial:${p.trialId}` : null);
+      normalize(run, content); break;
     case 'CONTINUE_TRIAL': {
       assert(p.phase === 'trialResult' && p.stage === 'done', '結果文を読み終えてください。');
       const region = content.regions[p.regionId];
@@ -374,7 +498,7 @@ function sceneInChain(sceneId, startId, content) {
 
 // A valid ID alone does not prove that this run has reached its source scene.
 // Keep this independent of global reading and of the bounded dialogue log.
-function trialWasReached(trialId, run, content, decision = false) {
+export function trialWasReached(trialId, run, content, decision = false) {
   const trial = content.trials[trialId];
   const progress = trial && run.chapterProgress[trial.regionId];
   if (!progress || progress.status === 'notStarted') return false;
@@ -401,7 +525,7 @@ function sceneWasReached(sceneId, run, content) {
     }
   }
   for (const event of Object.values(content.storyEvents)) {
-    if (run.storyEvents[event.id] && (sceneInChain(sceneId, event.entrySceneId, content) || sceneInChain(sceneId, event.completionSceneId, content))) return true;
+    if (run.storyEvents[event.id] && (sceneInChain(sceneId, event.entrySceneId, content) || sceneInChain(sceneId, event.presentationEntrySceneId, content) || sceneInChain(sceneId, event.completionSceneId, content))) return true;
   }
   return ['ending', 'completed'].includes(run.position.phase) && sceneInChain(sceneId, content.endingSceneId, content);
 }
@@ -422,6 +546,7 @@ function validatePosition(position, run, content, nested = false) {
   const p = position;
   const allowed = {
     intro: ['sceneId', 'blockIndex'], commanderSelection: [], draft: [], partyConfirmation: [],
+    tutorial: ['stage', 'locationId', 'sceneId', 'blockIndex'],
     departure: ['sceneId', 'blockIndex'], map: [],
     trial: ['stage', 'regionId', 'trialId', 'sceneId', 'blockIndex'],
     trialResult: ['stage', 'regionId', 'trialId', 'sceneId', 'blockIndex'],
@@ -432,7 +557,7 @@ function validatePosition(position, run, content, nested = false) {
   };
   assert(Object.keys(p).every(key => key === 'phase' || allowed[p.phase].includes(key)), '進行位置に不要な項目があります。');
   if (p.phase === 'ending') assert((p.sceneId === undefined) === (p.blockIndex === undefined), '終幕の本文位置が不正です。');
-  const textPhases = ['intro', 'departure', 'trial', 'trialResult', 'chapterClosing', 'conversation', 'theoReport', 'storyEvent'];
+  const textPhases = ['intro', 'departure', 'trial', 'trialResult', 'chapterClosing', 'conversation', 'theoReport', 'storyEvent', ...(p.phase === 'tutorial' && p.stage !== 'investigate' ? ['tutorial'] : [])];
   if (textPhases.includes(p.phase) || (p.phase === 'ending' && p.sceneId)) {
     assert(sceneKnown(p.sceneId, content) && Number.isInteger(p.blockIndex) && p.blockIndex >= 0, '本文の再開位置が不正です。');
     const probe = { ...run, position: p };
@@ -473,11 +598,22 @@ function validatePosition(position, run, content, nested = false) {
     }
   } else assert(!p.returnPosition, '不要な会話復帰位置です。');
   if (p.phase === 'intro') assert(sceneInChain(p.sceneId, content.introSceneId, content), '導入場面が不正です。');
+  if (p.phase === 'tutorial') {
+    const tutorial = content.prologue?.tutorial;
+    assert(tutorial && ['opening', 'investigate', 'location', 'feedback', 'success'].includes(p.stage), 'チュートリアル位置が不正です。');
+    if (p.stage === 'investigate') assert(p.sceneId === undefined && p.blockIndex === undefined, '調査選択位置が不正です。');
+    if (p.stage === 'opening') assert(sceneInChain(p.sceneId, tutorial.entrySceneId, content), '調査導入位置が不正です。');
+    if (p.stage === 'location') assert(tutorial.locations[p.locationId]?.sceneId === p.sceneId, '調査地点が不正です。');
+    else assert(p.locationId === undefined, '不要な調査地点があります。');
+    if (p.stage === 'feedback') assert(run.tutorial.judgmentUnlocked && Object.values(tutorial.feedbackSceneIds).includes(p.sceneId), '再判断位置が不正です。');
+    if (p.stage === 'success') assert(sceneInChain(p.sceneId, tutorial.successSceneId, content), '正解後会話の位置が不正です。');
+  }
   if (p.phase === 'departure') assert(sceneInChain(p.sceneId, content.departureSceneId, content), '出発場面が不正です。');
   if (p.phase === 'storyEvent') {
     const event = content.storyEvents[p.eventId];
-    assert(event && run.storyEvents[p.eventId]?.status === 'inProgress' && (sceneInChain(p.sceneId, event.entrySceneId, content) || sceneInChain(p.sceneId, event.completionSceneId, content)), 'イベント位置が不正です。');
+    assert(event && run.storyEvents[p.eventId]?.status === 'inProgress' && (sceneInChain(p.sceneId, event.entrySceneId, content) || sceneInChain(p.sceneId, event.presentationEntrySceneId, content) || sceneInChain(p.sceneId, event.completionSceneId, content)), 'イベント位置が不正です。');
   }
+  if(p.phase==='ending'&&content.officialEnding)assert(sceneInChain(p.sceneId,content.endingSceneId,content),'正式終幕の場面が不正です。');
 }
 
 export function validateRun(run, content) {
@@ -492,6 +628,33 @@ export function validateRun(run, content) {
   if (!['intro', 'commanderSelection'].includes(run.position.phase)) assert(own(content.commanders, run.commanderId), '指揮官が未選択です。');
   if (!SETUP_PHASES.has(run.position.phase) || run.position.phase === 'partyConfirmation') assert(isLegalParty(run.partyIds, content), '編成が不正です。');
   if (['intro', 'commanderSelection'].includes(run.position.phase)) assert(run.commanderId === null && run.partyIds.length === 0, '選抜前の状態が不正です。');
+  if (content.mapReturnLines) {
+    const chatter = run.mapReturnChatter;
+    assert(object(chatter) && object(chatter.draws), '地図帰還のひと言記録が不正です。');
+    assert(chatter.currentKey === null || string(chatter.currentKey) && own(chatter.draws, chatter.currentKey), '地図帰還の表示先が不正です。');
+    for (const [key, draw] of Object.entries(chatter.draws)) {
+      const trialId = key.startsWith('trial:') ? key.slice(6) : null;
+      const regionId = key.startsWith('region:') ? key.slice(7) : null;
+      assert(trialId ? mapReturnTrialAllowed(content.trials[trialId], content) && own(run.trialResults, trialId)
+        : regionId && content.regions[regionId]?.kind === 'normal' && run.chapterProgress[regionId]?.status === 'completed', '未到達の地図帰還記録です。');
+      assert(draw === null || object(draw) && run.partyIds.includes(draw.speakerId) &&
+        [0, 1].includes(draw.lineIndex) && string(content.mapReturnLines[draw.speakerId]?.[draw.lineIndex]), '地図帰還の台詞が不正です。');
+    }
+  }
+  if (content.prologue) {
+    const t = run.tutorial, phase = run.position.phase;
+    assert(object(t) && ['started', 'judgmentUnlocked', 'completed', 'postSuccessProcessed'].every(key => typeof t[key] === 'boolean'), 'チュートリアル記録が不正です。');
+    assert(unique(t.investigatedLocationIds) && t.investigatedLocationIds.every(id => own(content.prologue.tutorial.locations, id)), '調査済み地点が不正です。');
+    assert(t.started === !!run.commanderId && t.judgmentUnlocked === (t.investigatedLocationIds.length === Object.keys(content.prologue.tutorial.locations).length), '調査解放状態が不正です。');
+    assert(!t.completed || t.judgmentUnlocked, '調査完了前に正解しています。');
+    assert(!t.postSuccessProcessed || t.completed, '正解後会話の状態が不正です。');
+    if (['intro', 'commanderSelection'].includes(phase)) assert(!t.started && t.investigatedLocationIds.length === 0 && !t.completed && !t.postSuccessProcessed, '開始前に調査記録があります。');
+    else if (phase === 'tutorial') {
+      assert(run.partyIds.length === 0 && !t.postSuccessProcessed && t.completed === (run.position.stage === 'success'), '調査と選抜の順序が不正です。');
+      if (run.position.stage === 'opening') assert(t.investigatedLocationIds.length === 0, '調査導入前に調査記録があります。');
+      assert(run.heardConversationIds.length === 0 && Object.keys(run.acquiredInformation).length === 0 && Object.keys(run.theoInvestigations).length === 0 && Object.keys(run.storyEvents).length === 0, '調査に本編の記録があります。');
+    } else assert(t.completed && t.postSuccessProcessed, 'チュートリアルを終えていません。');
+  } else assert(run.position.phase !== 'tutorial' && run.tutorial === undefined, 'この内容版にチュートリアルはありません。');
   assert(unique(run.visitOrder) && run.visitOrder.every(id => content.regions[id]?.kind === 'normal' && content.regions[id].implemented), '訪問順が不正です。');
   assert(Object.keys(run.chapterProgress).length === Object.keys(content.regions).length && Object.keys(content.regions).every(id => own(run.chapterProgress, id)), '地域進行の参照先が不正です。');
   let activeCount = 0;
@@ -593,6 +756,11 @@ export function validateRun(run, content) {
     assert(run.mode === 'full' && Object.keys(content.regions).length === 5 && Object.values(run.chapterProgress).every(progress => progress.status === 'completed'), '全章未完了で継承判定へ到達しています。');
   }
   if (run.endingSnapshot !== undefined) assert(object(run.endingSnapshot) && ['ending', 'completed'].includes(run.position.phase), '終幕記録が不正です。');
+  if(content.officialEnding && ['ending','completed'].includes(run.position.phase)) {
+    assert(Object.keys(run.trialResults).length===Object.keys(content.trials).length,'正式終幕の試練が未完了です。');
+    assert(JSON.stringify(run.endingResult)===JSON.stringify(getSuccessionResult(run,content)),'確定した王位結果が試練記録と一致しません。');
+    if(run.position.phase==='completed')assert(run.completionKey&&run.endingSnapshot?.sovereignId===run.endingResult.sovereignId&&run.endingSnapshot?.rank===run.endingResult.rank,'正式終幕の完了記録がありません。');
+  } else assert(run.endingResult===undefined,'正式終幕以外に王位結果があります。');
   if (run.completionKey !== undefined) assert(string(run.completionKey) && run.endingSnapshot && ['ending', 'completed'].includes(run.position.phase), '完了キーが不正です。');
   for (const key of ['totalScore', 'theoRemaining', 'opponentParty', 'readTextKeys', 'readerProfile', 'chronicles']) assert(!own(run, key), '周回と共通保存、導出値は分離してください。');
   validatePosition(run.position, run, content);

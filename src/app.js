@@ -1,8 +1,9 @@
 import { defaultContent, contentForRun } from './content/catalog.js';
-import { createRun, transition, getCurrentText, getAvailableConversations, getAvailableChoices,
+import { createRun, transition, getCurrentText, getCurrentTextPage, getAvailableConversations, getAvailableChoices,
   isLegalParty, getOpponentParty, getCrisisAssignments, getTotalScore, getTheoRemaining,
-  canUseTheo, canManualSave, validateRun } from './engine.js';
+  canUseTheo, canManualSave, validateRun, trialWasReached, buildEndingRecord, getMapReturnChatter } from './engine.js';
 import { createStorage } from './storage.js';
+import { chronicleView, sortChronicles } from './chronicles.js';
 
 let content = defaultContent;
 const app = document.querySelector('#app');
@@ -12,10 +13,10 @@ const slotLabels = { auto:'オートセーブ', manual1:'手動セーブ 1', man
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const values = object => Object.values(object || {});
 const sortedCharacters = () => values(content.characters).sort((a,b) => a.displayOrder-b.displayOrder);
-const nameOf = id => content.characters[id]?.name || content.commanders[id]?.name || ({'support.theo':'テオ','support.chancellor':'宰相'}[id]) || '記録';
+const nameOf = id => content.characters[id]?.name || content.commanders[id]?.name || content.speakers?.[id]?.name || ({'support.theo':'テオ','support.chancellor':'宰相'}[id]) || '記録';
 const regionName = id => content.regions[id]?.name || '王都出発前';
 const character = id => content.characters[id];
-const storage = createStorage({ validateRun:run => validateRun(run, contentForRun(run)) });
+const storage = createStorage({ validateRun:run => validateRun(run, contentForRun(run)), contentStatus:'reviewed' });
 let run = null;
 let reader = { schemaVersion:1, readTextKeys:[] };
 let slots = { auto:null, manual1:null, manual2:null, manual3:null };
@@ -30,16 +31,75 @@ let modal = null;
 let renderedModal = null;
 let toast = '';
 let toastTimer;
+let readingSession = '';
+let readingHistory = [];
+let readingPreviewIndex = null;
+let chronicles = [];
+let chronicleScreen = null;
+let chronicleError = '';
+let chroniclesLoading = false;
+let chronicleScroll = 0;
 
 function button(label, action, extra='', kind='') {
   return `<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${label}</button>`;
 }
 function fixtureNote() {
+  if(content.officialEnding)return '';
   return `<div class="fixture-note"><strong>${content.contentStatus === 'partial' ? esc(content.subtitle || 'アルバ章・検収版') : '旧版の仮データ周回'}</strong>${esc(content.fixtureNotice)}</div>`;
+}
+function readingSessionKey(state) {
+  if (!state?.position) return '';
+  const p=state.position;
+  const suffix=(p.phase==='trial'||p.phase==='trialResult')?p.trialId
+    :p.phase==='storyEvent'?p.eventId
+    :p.phase==='chapterClosing'?p.regionId
+    :p.phase==='conversation'?p.conversationId
+    :p.phase==='theoReport'?p.investigationId
+    :p.phase==='tutorial'?`${p.stage || ''}:${p.locationId || p.sceneId || ''}`
+    :p.phase==='ending'?'ending'
+    :p.sceneId || p.phase;
+  return `${state.runId}:${p.phase}:${suffix || ''}`;
+}
+function syncReadingSession(state=run) {
+  const key=readingSessionKey(state);
+  if(key!==readingSession) {
+    readingSession=key;
+    readingHistory=[];
+    readingPreviewIndex=null;
+  }
+}
+function rememberReadingPage(state) {
+  syncReadingSession(state);
+  readingHistory.push(structuredClone(state));
+  if(readingHistory.length>100) readingHistory.shift();
+  readingPreviewIndex=null;
+}
+function canReadPrevious() {
+  return readingPreviewIndex===null ? readingHistory.length>0 : readingPreviewIndex>0;
+}
+function readPrevious() {
+  if(!readingHistory.length) return;
+  if(readingPreviewIndex===null) readingPreviewIndex=readingHistory.length-1;
+  else if(readingPreviewIndex>0) readingPreviewIndex--;
+  render();
+}
+function readForward() {
+  if(readingPreviewIndex===null) return;
+  if(readingPreviewIndex<readingHistory.length-1) readingPreviewIndex++;
+  else readingPreviewIndex=null;
+  render();
+}
+function previousReadingButton() {
+  return readingPreviewIndex===null && readingHistory.length
+    ? button('← 前の文章へ','read-prev','','compact')
+    : '';
 }
 
 function introductionLinks() {
-  return values(content.regions).filter(region=>region.implemented).map(region=>`<p class="small muted">${esc(region.name)}</p>${region.trialIds.map((id,i)=>button(`${i<2?`小試練${i+1}`:'大試練'}の導入を読む`,'introduction',`data-id="${id}"`,'compact')).join('')}`).join('');
+  return values(content.regions).filter(region=>region.implemented).map(region=>{
+    const links=region.trialIds.map((id,i)=>content.prologue&&(!run||!trialWasReached(id,run,content))?'':button(`${i<2?`小試練${i+1}`:'大試練'}の導入を読む`,'introduction',`data-id="${id}"`,'compact')).join('');
+    return links?`<p class="small muted">${esc(region.name)}</p>${links}`:'';
+  }).join('');
 }
 function introductionBlocks(sceneId) {
   const scene=content.scenes[sceneId];
@@ -58,12 +118,17 @@ function introductionPanel() {
   return `<section class="dialogue-panel"><p class="small muted">${esc(content.scenes[run.position.sceneId].introductionLabel || '導入小説 · 10月16日版')}</p>${introductionText(run.position.sceneId)}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('読了して進む →','ack-introduction','','primary')}</div></div></section>`;
 }
 function introductionModal(trialId) {
+  if(content.prologue&&(!run||!trialWasReached(trialId,run,content))) return null;
   const scene=content.scenes[content.trials[trialId]?.introductionSceneId];
   if(!scene) return null;
   return {title:scene.title,body:`<p class="small muted">${esc(scene.introductionLabel || '10月16日版の導入小説')}<br>閲覧のみ。進行・得点・情報・既読は変更しません。</p>${introductionText(scene.id)}`,footer:button('閉じる','close-modal')};
 }
 
 function portrait(person, cls='') {
+  const asset = content.portraits?.[person.id];
+  if (asset) {
+    return `<div class="portrait official-portrait ${cls}" style="--face-position:${esc(asset.position)}"><span class="portrait-fallback" aria-hidden="true">${esc(person.name.slice(0,1))}</span><img src="${esc(asset.src)}" alt="${esc(person.name)}の肖像"></div>`;
+  }
   const commanderImages = {
     'commander.alphonse':'./src/assets/portraits/commander-alphonse.png',
     'commander.rosemond':'./src/assets/portraits/commander-rosemond.png'
@@ -73,8 +138,22 @@ function portrait(person, cls='') {
   }
   return `<div class="portrait ${cls}" aria-label="${esc(person.name)}の仮画像枠"><span aria-hidden="true">${esc(person.name.slice(0,1))}</span><small>肖像 準備中</small></div>`;
 }
+// Shared by dialogue labels and rosters, including future ensemble conversations.
+function faceIcon(id) {
+  const fixed = {
+    'commander.alphonse': {src:'./src/assets/portraits/commander-alphonse.png', commander:true},
+    'commander.rosemond': {src:'./src/assets/portraits/commander-rosemond.png', commander:true},
+    'support.king': {src:'./src/assets/kingdom-emblem.svg', emblem:true},
+  };
+  const asset=content.portraits?.[id] || defaultContent.portraits?.[id] || fixed[id];
+  if(!asset) return '';
+  return `<span class="face-icon${asset.emblem?' emblem-icon':asset.commander?' commander-icon':''}" aria-hidden="true"><img src="${esc(asset.src)}" alt=""></span>`;
+}
+function speakerLabel(id) {
+  return `<div class="speaker">${faceIcon(id)}<span>${esc(nameOf(id))}</span></div>`;
+}
 function member(person) {
-  return `<div class="member"><span class="member-avatar" aria-hidden="true">${esc(person.name.slice(0,1))}</span><span>${esc(person.name)}</span></div>`;
+  return `<div class="member">${faceIcon(person.id)}<span>${esc(person.name)}</span></div>`;
 }
 function notify(message) {
   toast=message;
@@ -86,21 +165,52 @@ function positionLabel(state) {
   if (!state?.position) return '保存位置を確認できません';
   const p=state.position;
   const stateContent=contentForRun(state);
-  const labels={ intro:'旅の導入',commanderSelection:'指揮官選択',draft:'同行者選抜',partyConfirmation:'両陣営確認',departure:'王都出発',map:'地図ホーム',chapterClosing:'地域の帰還会話',conversation:'同行者との会話',theoReport:'テオの調査報告',trialResult:'判断結果',storyEvent:'物語イベント' };
+  const labels={ intro:'旅の導入',commanderSelection:'指揮官選択',tutorial:'消えた式典の飾り',draft:'同行者選抜',partyConfirmation:'同行者の最終確認',departure:'王都出発',map:'地図ホーム',chapterClosing:'地域の帰還会話',conversation:'同行者との会話',theoReport:'テオの調査報告',trialResult:'判断結果',storyEvent:'物語イベント',ending:'最終章',completed:'物語を読み終えた' };
   if (p.phase==='trial') return `${regionName(p.regionId)} / ${stateContent.trials[p.trialId]?.title || '試練'}`;
   return labels[p.phase] || p.phase;
 }
 function header() {
-  return `<header class="app-header"><button class="brand" data-action="title"><span class="seal" aria-hidden="true">樹</span><span>バウムガルテン王国の継承戦</span></button><div class="header-tools"><span class="save-light">${busy?'保存中…':pending?'未保存':run?'自動保存済み':'ALBA / PROTOTYPE'}</span><button class="text-button" data-action="saves" ${!ready?'disabled':''}>${title?'ロード':'セーブ / ロード'}</button></div></header>`;
+  return `<header class="app-header"><button class="brand" data-action="title"><span class="seal" aria-hidden="true">樹</span><span>バウムガルテン王国の継承戦</span></button><div class="header-tools"><span class="save-light">${busy?'保存中…':pending?'未保存':run?'自動保存済み':content.officialEnding?'BAUMGARTEN':'ALBA / PROTOTYPE'}</span><button class="text-button" data-action="saves" ${!ready?'disabled':''}>${title?'ロード':'セーブ / ロード'}</button></div></header>`;
 }
 function treeArt() {
   return '<img class="kingdom-emblem" src="./src/assets/kingdom-emblem.svg" width="360" height="420" alt="" aria-hidden="true">';
 }
 function titlePage() {
-  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">ふたりの指揮官、八人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}</nav>${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">第一の訪問地　アルバ</div></div></main>`;
+  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">2人の指揮官、8人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}${chronicles.length?button('<span>王国史</span><span>過去の継承を読む</span>','chronicles',!ready?'disabled':''):''}</nav>${chronicleError?`<p class="small muted" role="status">${esc(chronicleError)} ${button('再読込み','chronicles-refresh','','compact')}</p>`:''}${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">${content.prologue?'王国を巡る、ふたりの継承戦':'第一の訪問地　アルバ'}</div></div></main>`;
 }
 function pageHeading(kicker, heading, body='', actions='') {
   return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${heading}</h1>${body?`<p class="muted small">${body}</p>`:''}</div>${actions?`<div class="button-row">${actions}</div>`:''}</div>`;
+}
+function chronicleFacts(view) {
+  return `<dl class="chronicle-facts">${[['クリア日時',view.date],['指揮官',view.commander],['即位者',view.sovereign],['最終継承点',view.score],['総合評価',view.rank]].map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`;
+}
+function chronicleText(label, text, turns = null) {
+  if (!text) return '';
+  const paragraphs=turns ? turns.map(turn=>`<div class="chronicle-turn">${turn.name?`<div class="chronicle-speaker">${esc(turn.name)}</div>`:''}${turn.paragraphs.map(p=>`<p>${esc(p)}</p>`).join('')}</div>`).join('')
+    : text.split(/\n\s*\n/).map(p=>`<p>${esc(p)}</p>`).join('');
+  return `<details class="panel chronicle-text"><summary>${esc(label)}</summary><div class="chronicle-prose" role="region" aria-label="${esc(label)}" tabindex="0">${paragraphs}</div></details>`;
+}
+function chroniclesPage() {
+  const record=chronicles.find(r=>r.completionKey===chronicleScreen?.key);
+  const retry=chronicleError?`<div class="notice" role="status">${esc(chronicleError)}${button('再読込み','chronicles')}</div>`:'';
+  const heading=(title,back,action)=>`<div class="page-heading"><div><p class="eyebrow">王国に刻まれた、旅の記録。</p><h1 tabindex="-1">${title}</h1></div>${button(back,action)}</div>`;
+  if (!record) {
+    return `<main class="page chronicle-page">${heading('王国史','タイトルへ','chronicles-title')}${retry}${chroniclesLoading?'<p class="muted" role="status">王国史を読み込んでいます…</p>':''}<div class="chronicle-list">${chronicles.map(r=>`<article class="panel chronicle-card">${chronicleFacts(chronicleView(r))}${button('記録を読む →','chronicle-detail',`data-id="${esc(r.completionKey)}"`)}</article>`).join('')}</div>${!chronicles.length&&!chroniclesLoading?'<p>保存された完成記録はありません。</p>':''}</main>`;
+  }
+  const view=chronicleView(record);
+  return `<main class="page chronicle-page">${heading('継承の記録','王国史一覧へ','chronicles-back')}<section class="panel">${chronicleFacts(view)}<h2>継承結果</h2><p>${esc(view.outcome)}</p><h2>旅の同行者</h2><ul>${view.party.map(p=>`<li>${esc(p.name)}</li>`).join('')}</ul><h2>各都市で採用した政策</h2><dl class="chronicle-policies">${view.policies.map(p=>`<div><dt>${esc(p.city)}</dt><dd>${esc(p.label)}</dd></div>`).join('')}</dl>${!view.policies.length?'<p class="muted">政策の記録はありません。</p>':''}<h2>統治傾向</h2><p>${esc(view.governance)}</p>${view.counts.length?`<p class="small muted">${view.counts.map(c=>`${esc(c.label)}：${c.count}`).join(' ／ ')}</p>`:''}</section><section class="chronicle-snapshots" aria-label="保存された物語">${chronicleText('終幕・エピローグ（保存本文）',view.epilogue)}${chronicleText('八人の談話（保存本文）',view.ensemble,view.ensembleTurns)}${!view.epilogue&&!view.ensemble?'<p class="muted">本文の記録はありません。</p>':''}</section>${button('王国史一覧へ','chronicles-back')}</main>`;
+}
+async function refreshChronicles() {
+  try { chronicles=sortChronicles(await storage.listChronicles());chronicleError=''; }
+  catch(e) { chronicleError=`王国史を読み込めませんでした。${e.message}`; }
+}
+async function openChronicles() {
+  if (!title || chroniclesLoading) return;
+  toast='';clearTimeout(toastTimer);
+  chronicleScreen={};chroniclesLoading=true;render();
+  await refreshChronicles();
+  chroniclesLoading=false;render();window.scrollTo({top:0,behavior:'instant'});
+  app.querySelector('.chronicle-page h1')?.focus?.({preventScroll:true});
 }
 function stepStrip(active) {
   return `<div class="step-strip">${['指揮官を選ぶ','同行者を選ぶ','両陣営を確認'].map((x,i)=>`<span class="${i===active?'current':''}">${String(i+1).padStart(2,'0')}　${x}</span>`).join('')}</div>`;
@@ -114,13 +224,15 @@ function roleCounts() {
   return counts;
 }
 function draftPage() {
+  if (content.prologue) return `<main class="page prologue-draft">${pageHeading('王国を見るための同行者','同行者を4人選んでください','同行者は新しい視点や情報を伝えます。追加案や意見が常に最善とは限りません。最後に判断するのは主人公自身です。')}<div class="draft-toolbar"><div class="role-counts"><span>選択中 <b>${run.partyIds.length} / 4</b></span></div>${button('この4人で旅立つ','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'','primary')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}の詳細${run.partyIds.includes(c.id)?'・選択中':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><p class="small muted">出身：${esc(regionName(c.originRegionId))}</p><p class="small">${esc(content.companionProfiles[c.id].summary)}</p><span class="text-button small">詳しく見る</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">選択中</span>':''}</div></button>`).join('')}</div><p class="small muted">選ばなかった4人は、もう一方の候補と旅をします。旅の途中で同行者を変更することはできません。</p></main>`;
   const counts=roleCounts();
-  return `<main class="page">${stepStrip(1)}${pageHeading('固定パーティの選抜','四人の同行者を選ぶ','カードをタップして人物を知り、詳細の「選ぶ」で編成します。枠が埋まったら、先に選んだ人物を外してください。')}<div class="draft-toolbar"><div class="role-counts">${content.partySelection === 'free' ? `<span>同行者<b>${run.partyIds.length} / 4</b></span><span>8人から自由に選択</span>` : Object.entries(roles).map(([id,label])=>`<span>${label}<b>${counts[id]} / ${id==='melee'?2:1}</b></span>`).join('')}</div>${button('両陣営を確認 →','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}のプロフィール${run.partyIds.includes(c.id)?'・選択済み':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><span class="role">${roles[c.role]} / ${c.age}歳</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">同行</span>':''}</div></button>`).join('')}</div><p class="small muted" style="margin-top:22px">選ばれなかった四人は、もう一方の指揮官と旅立ちます。出発後は同行者を変更できません。</p></main>`;
+  return `<main class="page">${stepStrip(1)}${pageHeading('固定パーティの選抜','4人の同行者を選ぶ','カードをタップして人物を知り、詳細の「選ぶ」で編成します。枠が埋まったら、先に選んだ人物を外してください。')}<div class="draft-toolbar"><div class="role-counts">${content.partySelection === 'free' ? `<span>同行者<b>${run.partyIds.length} / 4</b></span><span>8人から自由に選択</span>` : Object.entries(roles).map(([id,label])=>`<span>${label}<b>${counts[id]} / ${id==='melee'?2:1}</b></span>`).join('')}</div>${button('両陣営を確認 →','confirm-party',!isLegalParty(run.partyIds,content)?'disabled':'')}</div><div class="card-grid">${sortedCharacters().map(c=>`<button type="button" class="character-card ${run.partyIds.includes(c.id)?'selected':''}" data-action="profile" data-id="${c.id}" aria-label="${esc(c.name)}のプロフィール${run.partyIds.includes(c.id)?'・選択済み':''}">${portrait(c)}<div class="character-card-info"><div><h3>${esc(c.name)}</h3><span class="role">${roles[c.role]} / ${c.age}歳</span></div>${run.partyIds.includes(c.id)?'<span class="selected-mark">同行</span>':''}</div></button>`).join('')}</div><p class="small muted" style="margin-top:22px">選ばれなかった4人は、もう一方の指揮官と旅立ちます。出発後は同行者を変更できません。</p></main>`;
 }
 function campPage() {
+  if (content.prologue) return `<main class="page">${pageHeading('同行者の最終確認','同行者はこちらの4名でよろしいですか？','この4名と共に、王国各地を巡ります。旅の途中で同行者を変更することはできません。')}<div class="confirmation-grid">${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<article class="panel">${portrait(c)}<h2>${esc(c.name)}</h2></article>`).join('')}</div><div class="button-row end">${button('選び直す','back-draft')}${button('この4人に決定する','depart','','primary')}</div></main>`;
   const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
   const camp=(label,leader,members)=>`<section class="panel"><p class="eyebrow">${label}</p><h2>${esc(leader.name)}</h2>${members.map(c=>`<div class="member-row">${member(c)}</div>`).join('')}</section>`;
-  return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認',content.partySelection === 'free' ? '選んだ四人と、残り四人がそれぞれの陣営になります。同行者はこの周回で固定です。' : 'それぞれ近接二人、遠隔一人、回復一人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
+  return `<main class="page">${stepStrip(2)}${pageHeading('出発の前に','両陣営の確認',content.partySelection === 'free' ? '選んだ4人と、残り4人がそれぞれの陣営になります。同行者はこの周回で固定です。' : 'それぞれ近接2人、遠隔1人、回復1人。同行者はこの旅の間、固定されます。')}<div class="camp-grid">${camp('あなたの陣営',content.commanders[run.commanderId],sortedCharacters().filter(c=>run.partyIds.includes(c.id)))}${camp('もう一方の陣営',rival,getOpponentParty(run,content))}</div><div class="button-row end">${button('選抜に戻る','back-draft')}${button('この編成で出発する →','depart','','primary')}</div></main>`;
 }
 function mapArt() {
   const image='./src/assets/kingdom-map.png';
@@ -128,6 +240,10 @@ function mapArt() {
   return `<figure class="kingdom-map"><img class="map-art" src="${image}" width="1004" height="753" alt="${description}"></figure><details class="map-detail"><summary>地図を拡大して見る</summary><div class="map-detail-scroll" role="region" aria-label="原寸の王国地図。上下左右にスクロールできます" tabindex="0"><img src="${image}" width="1004" height="753" alt="${description}"></div></details>`;
 }
 function chapterStatus(id) { return run.chapterProgress[id]?.status || 'notStarted'; }
+function mapReturnChatter() {
+  const chatter = getMapReturnChatter(run, content);
+  return chatter ? `<section class="map-chatter" aria-label="旅のひと言">${faceIcon(chatter.speakerId)}<div><p class="map-chatter-name">${esc(nameOf(chatter.speakerId))}</p><p class="map-chatter-text">「${esc(chatter.text)}」</p></div></section>` : '';
+}
 function mapPage() {
   const availableRegions=values(content.regions).filter(region=>region.implemented);
   const allDone=availableRegions.every(region=>chapterStatus(region.id)==='completed');
@@ -139,18 +255,39 @@ function mapPage() {
     const sub=!r.implemented?'準備中':status==='completed'?'完了 · 記録を開く':status==='active'?'攻略中 · 続きへ':'未訪問 · 試練を開始';
     return `<button type="button" class="map-place ${available&&status!=='completed'?'ready':''} ${status==='completed'?'complete':''}" data-region="${r.id}" data-action="${status==='completed'?'record':'region'}" data-id="${r.id}" ${!available?'disabled':''}><strong>${esc(r.name)}</strong><small>${sub}</small></button>`;
   }).join('');
-  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav></section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
+  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav>${mapReturnChatter()}</section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${!content.hideMapRest&&getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
 }
 function conversationButtons() {
-  return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}"><span class="member-avatar" aria-hidden="true">${esc(nameOf(c.participantIds[0]).slice(0,1))}</span><span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');
+  return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}">${faceIcon(c.participantIds[0])}<span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');
 }
 function trialSidebar() {
+  if(readingPreviewIndex!==null) return '<aside class="trial-sidebar"><section class="panel"><h3>読み返し中</h3><p class="small muted">「次へ」で現在の進行へ戻れます。読み返し中は進行操作を行いません。</p></section></aside>';
   const decision=run.position.phase==='trial'&&run.position.stage==='decision';
-  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div></section><section class="panel"><h3>テオの調査</h3><p class="small muted">残り ${getTheoRemaining(run)} / 2 回<br>各地域の大試練で一度だけ。</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
+  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p></section><section class="panel"><h3>テオの調査</h3><p class="small muted">残り ${getTheoRemaining(run)} / 2 回<br>各地域の大試練で一度だけ。</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
 }
-function dialoguePanel(block) {
-  const read=reader.readTextKeys.includes(block.readKey);
-  return `<section class="dialogue-panel"><div class="speaker">${esc(nameOf(block.speakerId))}</div><div class="dialogue-text">${esc(block.text)}</div><div class="dialogue-actions"><span class="read-indicator">${read?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!read?'disabled':''}>既読スキップ</button>${button('次へ →','ack','','primary')}</div></div></section>`;
+function readingActions(page, nextLabel='次へ →') {
+  const allRead=page.every(block=>reader.readTextKeys.includes(block.readKey));
+  const someRead=page.some(block=>reader.readTextKeys.includes(block.readKey));
+  const preview=readingPreviewIndex!==null;
+  return `<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button type="button" class="button" data-action="read-prev" ${!canReadPrevious()?'disabled':''}>← 前へ</button><button class="text-button small" data-action="skip" ${preview||!allRead?'disabled':''}>既読スキップ</button>${button(preview?'次へ →':nextLabel,preview?'read-forward':'ack-page','','primary')}</div></div>`;
+}
+function dialoguePanel(blocks, nextLabel='次へ →') {
+  const page=Array.isArray(blocks)?blocks:[blocks].filter(Boolean);
+  if (content.endingReading && run.position.phase === 'ending') {
+    const turns=[];
+    for (const block of page) {
+      const last=turns.at(-1);
+      if (last && last.speakerId===block.speakerId) last.text.push(block.text);
+      else turns.push({speakerId:block.speakerId,text:[block.text]});
+    }
+    const text=turns.map(turn=>`<div class="dialogue-turn${turn.speakerId?'':' narration-turn'}">${turn.speakerId?speakerLabel(turn.speakerId):''}<div class="dialogue-text">${esc(turn.text.join('\n'))}</div></div>`).join('');
+    return `<section class="dialogue-panel"><div class="dialogue-turns">${text}</div>${readingActions(page,nextLabel)}</section>`;
+  }
+  const multipleSpeakers=new Set(page.map(block=>block.speakerId || null)).size>1;
+  const text=multipleSpeakers
+    ? `<div class="dialogue-turns">${page.map(block=>`<div class="dialogue-turn${block.speakerId?'':' narration-turn'}">${block.speakerId?speakerLabel(block.speakerId):''}<div class="dialogue-text">${esc(block.text)}</div></div>`).join('')}</div>`
+    : `${page[0]?.speakerId?speakerLabel(page[0].speakerId):''}<div class="dialogue-text">${page.map(block=>esc(block.text)).join('<br><br>')}</div>`;
+  return `<section class="dialogue-panel">${text}${readingActions(page,nextLabel)}</section>`;
 }
 function conversationBlocks(startIndex=0) {
   const p=run?.position;
@@ -171,7 +308,7 @@ function conversationPanel() {
   const paragraphs=blocks.map(block=>manuscript
     ? `<p class="${block.speakerId?'speech':'narration'}" aria-label="${block.speakerId?esc(nameOf(block.speakerId))+'の台詞':'地の文'}">${esc(block.text)}</p>`
     : `<p>${esc(companionSpeechText(block.text))}</p>`).join('');
-  return `<section class="dialogue-panel"><div class="speaker">${esc(speaker)}</div>${manuscript?`<h2 class="conversation-title">${esc(conversation.title)}</h2>`:''}<div class="dialogue-text conversation-text${manuscript?' manuscript-text':''}" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${paragraphs}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
+  return `<section class="dialogue-panel">${speakerLabel(manuscript?conversation.participantIds[0]:blocks[0].speakerId)}${manuscript?`<h2 class="conversation-title">${esc(conversation.title)}</h2>`:''}<div class="dialogue-text conversation-text${manuscript?' manuscript-text':''}" role="region" aria-label="${esc(speaker)}の会話" tabindex="0" data-conversation-id="${esc(run.position.conversationId)}">${paragraphs}</div><div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('確認して戻る →','ack-conversation','','primary')}</div></div></section>`;
 }
 function companionSpeechText(text) {
   return text.startsWith('「') && text.endsWith('」') ? text.slice(1,-1) : text;
@@ -182,12 +319,14 @@ function assignments(choice) {
 }
 function choicesPanel() {
   const trial=content.trials[run.position.trialId];
-  return `<section><div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'三つの作戦は、いずれも四人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
+  const back=previousReadingButton();
+  return `<section>${back?`<div class="button-row" style="margin-bottom:14px">${back}</div>`:''}<div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'3つの作戦は、いずれも4人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
 }
 function trialPage() {
   const p=run.position;
   const trial=content.trials[p.trialId || p.returnPosition?.trialId];
-  const block=getCurrentText(run,content);
+  const page=getCurrentTextPage(run,content);
+  const block=page[0];
   const regionId=p.regionId || p.returnPosition?.regionId || trial?.regionId;
   const result=run.trialResults[p.trialId];
   const heading=p.phase==='theoReport'?'テオの調査報告':p.phase==='conversation'?'同行者の声':p.phase==='chapterClosing'?`${regionName(regionId)}からの帰還`:trial?.title || '王都からの旅立ち';
@@ -198,10 +337,10 @@ function trialPage() {
   }
   if(introductionBlocks(p.sceneId).length) body+=introductionPanel();
   else if(conversationBlocks().length) body+=conversationPanel();
-  else if(block) body+=dialoguePanel(block);
+  else if(block) body+=dialoguePanel(page);
   else if(p.phase==='trial'&&p.stage==='decision') body+=choicesPanel();
   else if(p.phase==='trialResult'&&p.stage==='done') {
-    body+=`<section class="panel"><h2>判断を記録しました</h2><p class="small muted">評価の再表示で得点が増えることはありません。この区切りでセーブするか、次へ進めます。</p>${trial.interaction==='crisisPlan'?assignments(trial.choices.find(c=>c.id===result.choiceId)):''}<div class="button-row" style="margin-top:24px">${button(trial.kind==='major'?(content.scenes[content.regions[trial.regionId].closingSceneId]?.blocks.length?'帰還の会話へ →':'地図へ戻る →'):'次の試練へ →','next-trial','','primary')}${button('セーブ / ロード','saves')}</div></section>`;
+    body+=`<section class="panel"><h2>判断を記録しました</h2><p class="small muted">評価の再表示で得点が増えることはありません。この区切りでセーブするか、次へ進めます。</p>${trial.interaction==='crisisPlan'?assignments(trial.choices.find(c=>c.id===result.choiceId)):''}<div class="button-row" style="margin-top:24px">${previousReadingButton()}${button(trial.kind==='major'?(content.scenes[content.regions[trial.regionId].closingSceneId]?.blocks.length?'帰還の会話へ →':'地図へ戻る →'):'次の試練へ →','next-trial','','primary')}${button('セーブ / ロード','saves')}</div></section>`;
   }
   if (p.phase==='trialResult') {
     const selected=trial.choices.find(c=>c.id===result.choiceId);
@@ -211,14 +350,75 @@ function trialPage() {
   const canReturn=(p.phase==='trial'&&p.stage==='decision')||(p.phase==='trialResult'&&p.stage==='done');
   return `<main class="page">${pageHeading(regionId?`${esc(regionName(regionId))} / 試練の記録`:'旅のはじまり',esc(heading),'',canReturn?button('地図へ一時帰還','return-map','', 'compact'):'')}${trial?`<div class="chapter-path">${content.regions[trial.regionId].trialIds.map((id,i)=>`<span class="${id===trial.id?'active':''}">${i<2?`小試練 ${i+1}`:'大試練'}</span>`).join('')}</div>`:''}<div class="trial-layout"><div class="trial-main">${body}<div style="margin-top:20px">${fixtureNote()}</div></div>${trialSidebar()}</div></main>`;
 }
+function storyEventCg(page) {
+  const cg=content.scenes[run.position.sceneId]?.eventCg;
+  if(!cg || !page.some(block=>cg.blockIds.includes(block.id))) return '';
+  return `<figure class="event-cg"><img src="${esc(cg.src)}" alt="${esc(cg.alt)}" width="${cg.width}" height="${cg.height}" decoding="async"><p class="event-cg-fallback">序章の挿絵を読み込めませんでした。本文はそのまま読み進められます。</p></figure>`;
+}
+function endingPage() {
+  const page=getCurrentTextPage(run,content),scene=content.scenes[run.position.sceneId];
+  const cg=scene?.eventCgBySovereign?.[run.endingResult.sovereignId];
+  let art='';
+  if(cg) {
+    const img=`<img src="${esc(cg.src)}" alt="${esc(cg.alt)}" width="${cg.width}" height="${cg.height}">`;
+    const fallback='<p class="comic-fallback">戴冠式の挿絵を読み込めませんでした。本文はそのまま読み進められます。</p>';
+    art=`<div class="coronation-reader"><details class="comic-zoom"><summary>拡大して見る</summary><div class="comic-zoom-scroll" role="region" aria-label="戴冠式の原画。上下左右にスクロールできます" tabindex="0"><figure class="comic-figure coronation-original">${img}${fallback}</figure></div></details><figure class="comic-figure coronation-fit">${img}${fallback}</figure></div>`;
+  }
+  const ensembleCg=scene?.ensembleCg;
+  if (ensembleCg && page.some(block=>ensembleCg.blockIds.includes(block.id))) {
+    art=`<figure class="event-cg ensemble-cg"><img src="${esc(ensembleCg.src)}" alt="${esc(ensembleCg.alt)}" width="${ensembleCg.width}" height="${ensembleCg.height}" decoding="async"><p class="event-cg-fallback">談話会の挿絵を読み込めませんでした。本文はそのまま読み進められます。</p></figure>`;
+  }
+  return `<main class="page story-page ending-page${content.endingReading?' ending-reading':''}">${pageHeading('終章',esc(scene?.title||'物語の終わり'))}${art}${page.length?dialoguePanel(page,run.position.sceneId===content.officialEnding.lastSceneId?'物語を閉じる':'次へ →'):'<p>終幕の記録を保存しています。</p>'}<div class="button-row reunion-tools">${button('セーブ / ロード','saves')}${button('会話ログ','log')}</div></main>`;
+}
+function finPage() {
+  const marks=[[52,69],[25,24],[76,23],[22,84],[50,44]];
+  return `<main class="fin-page" aria-label="王国年代記の最後の一頁"><div class="fin-map" aria-hidden="true"><img src="./src/assets/kingdom-map.png" alt="">${marks.map(([left,top])=>`<i class="fin-city" style="left:${left}%;top:${top}%"></i>`).join('')}</div><div class="fin-seal" aria-hidden="true"><img src="./src/assets/kingdom-emblem.svg" alt=""></div><div class="fin-copy"><h1>FIN</h1><p>BAUMGARTEN</p></div><div class="fin-actions">${button('タイトルへ戻る','fin-title')}</div><div class="fin-veil" aria-hidden="true"></div></main>`;
+}
 function storyPage() {
-  const block=getCurrentText(run,content);
-  return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(block):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
+  const page=getCurrentTextPage(run,content);
+  const block=page[0];
+  const scene=content.scenes[run.position.sceneId];
+  if(run.position.phase==='storyEvent' && scene?.reunionStage) return reunionPage(page,scene);
+  if (content.prologue) {
+    const event = run.position.phase === 'storyEvent';
+    const rival=values(content.commanders).find(c=>c.id!==run.commanderId);
+    const showParties=event || run.position.phase === 'departure';
+    const parties=showParties?`<div class="camp-grid story-parties"><section class="panel"><h3>${esc(nameOf(run.commanderId))}の一行</h3>${run.partyIds.map(id=>member(character(id))).join('')}</section><section class="panel"><h3>${esc(rival.name)}の一行</h3>${getOpponentParty(run,content).map(member).join('')}</section></div>`:'';
+    return `<main class="page story-page">${pageHeading(event?'旅の途中で':'継承戦の序章',esc(content.scenes[run.position.sceneId]?.title || '旅のはじまり'))}${parties}${storyEventCg(page)}${block?dialoguePanel(page):''}<div class="button-row">${button('会話ログ','log')}</div></main>`;
+  }
+  return `<main class="page" style="max-width:850px">${pageHeading('継承戦の序章',run.position.phase==='intro'?'旅のはじまり':'王都を発つ')} ${block?dialoguePanel(page):'<p>次の場面を準備しています。</p>'}<div class="button-row" style="margin-top:18px">${button('会話ログ','log')}</div><div style="margin-top:28px">${fixtureNote()}</div></main>`;
+}
+function reunionPage(page, scene) {
+  const stage=scene.reunionStage;
+  let body='';
+  if(stage==='parties') {
+    const rival=getOpponentParty(run,content);
+    const parties=['commander.alphonse','commander.rosemond'].map(id=>content.commanders[id]).map(leader=>{
+      const members=leader.id===run.commanderId?run.partyIds.map(character):rival;
+      return `<section class="panel"><h2>${esc(leader.name)}の一行</h2>${members.map(member).join('')}</section>`;
+    }).join('');
+    body=`<p class="small muted">${esc(page[0].text)}</p><div class="camp-grid story-parties">${parties}</div>${readingActions(page,scene.nextLabel)}`;
+  } else if(stage==='comic') {
+    const cg=scene.comic;
+    const image=`<img src="${esc(cg.src)}" width="${cg.width}" height="${cg.height}" alt="${esc(cg.alt)}" decoding="async">`;
+    body=`<div class="comic-reader"><details class="comic-zoom"><summary>拡大して読む</summary><div class="comic-zoom-scroll" role="region" aria-label="拡大した再会漫画。上下左右にスクロールできます" tabindex="0"><figure class="comic-figure">${image}<p class="comic-fallback">漫画を読み込めませんでした。次へ進むことができます。</p></figure></div></details><figure class="comic-figure comic-fit">${image}<p class="comic-fallback">漫画を読み込めませんでした。次へ進むことができます。</p></figure></div>${readingActions(page,scene.nextLabel)}`;
+  } else body=dialoguePanel(page,scene.nextLabel);
+  return `<main class="page story-page reunion-page${stage==='comic'?' comic-page':''}">${pageHeading('双子の再会 ― 街道沿いの宿場',esc(scene.title))}${body}<div class="button-row reunion-tools">${button('セーブ / ロード','saves')}${button('会話ログ','log')}</div></main>`;
+}
+function tutorialPage() {
+  const p=run.position, t=run.tutorial;
+  const page=getCurrentTextPage(run,content);
+  const block=page[0];
+  const locations=values(content.prologue.tutorial.locations);
+  const controls=p.stage==='investigate'?`<section class="panel"><h2>調査する場所</h2><div class="button-row">${locations.map(l=>button(`${esc(l.name)}${t.investigatedLocationIds.includes(l.id)?' · 調査済み（再確認）':''}`,'tutorial-location',`data-id="${l.id}"`)).join('')}</div><p class="small muted">3地点をすべて調査した後に判断できます。調査済みの場所も再確認できます。</p><h2>式典飾りはどこにある？</h2><div class="tutorial-choices">${[['a','A. 王城倉庫'],['b','B. 西棟の保管場所'],['c','C. 式典会場']].map(([id,label])=>button(label,'tutorial-choice',`data-id="${id}" ${t.judgmentUnlocked?'':'disabled'}`)).join('')}</div></section>`:'';
+  return `<main class="page story-page">${pageHeading('序章の調査','消えた式典の飾り',`調査済み ${t.investigatedLocationIds.length} / 3 地点 · 誤答のペナルティはありません。`)}${block?dialoguePanel(page):controls}<div class="button-row">${button('会話ログ','log')}</div></main>`;
 }
 function profileModal(id) {
   const c=character(id), selected=run?.partyIds.includes(id);
   const choosing=!title&&run?.position.phase==='draft';
   const full=choosing&&!selected&&(content.partySelection === 'free' ? run.partyIds.length >= 4 : roleCounts()[c.role]>=(c.role==='melee'?2:1));
+  const profile=content.companionProfiles?.[id];
+  if(profile) return { title:c.name, large:true, body:`<div class="profile-layout official-profile">${portrait(c,'full-portrait')}<div><p class="eyebrow">${c.age}歳 / 出身：${esc(regionName(c.originRegionId))}</p><h3>人物紹介</h3><p class="profile-text">${esc(profile.profile)}</p><h3>旅で活きる視点</h3><p class="profile-text">${esc(profile.perspective)}</p><h3>本人の一言</h3><p class="profile-text">${esc(profile.quote)}</p>${full?'<div class="notice">同行者は4名まで選べます。</div>':''}</div></div>`,footer:choosing?button(selected?'選択を外す':'同行者に選ぶ','toggle-party',`data-id="${id}" ${full?'disabled':''}`,selected?'':'primary'):button('閉じる','close-modal') };
   return { title:c.name, body:`<div class="profile-layout">${portrait(c)}<div><p class="eyebrow">${roles[c.role]} / ${c.age}歳 / ${esc(c.gender)}</p><dl class="profile-meta"><dt>出身</dt><dd>${esc(regionName(c.originRegionId))}</dd><dt>活動地域</dt><dd>${esc(c.activityRegionIds.map(regionName).join('・'))}</dd><dt>得意分野</dt><dd>${esc(c.expertise.join('・'))}</dd></dl></div></div><p class="profile-text">${esc(c.profile)}</p><h3 class="section-label">主な関係性</h3><p class="small">${esc(c.relationships.join(' / '))}</p>${full?'<div class="notice">同行者の枠は埋まっています。先に選択済みの人物を外してください。</div>':''}`, footer:choosing?button(selected?'同行者から外す':'同行者に選ぶ','toggle-party',`data-id="${id}" ${full?'disabled':''}`,selected?'':'primary'):button('閉じる','close-modal') };
 }
 function memoBody(regionId) {
@@ -280,8 +480,8 @@ function slotSummary(slot) {
   } catch { return '<p class="muted">この保存データは確認が必要です。ロード時に検証します。</p>'; }
 }
 function savesModal() {
-  const canSave=!title&&run&&canManualSave(run)&&!pending;
-  return { title:title?'旅の記録をロード':'セーブ / ロード', large:true, body:`<p class="small muted">このブラウザに保存します。手動セーブは地図や試練の区切りで使えます。ロードすると選んだ地点へ戻り、オートセーブも更新されます。</p>${Object.entries(slotLabels).map(([id,label])=>`<section class="save-slot"><div class="save-slot-header"><h3>${label} ${id==='auto'?'<span class="save-badge">AUTO</span>':''}</h3><time class="small muted">${slots[id]?.savedAt?esc(new Date(slots[id].savedAt).toLocaleString('ja-JP')):''}</time></div>${slotSummary(slots[id])}<div class="button-row">${id!=='auto'?button('ここに保存','save-slot',`data-id="${id}" ${!canSave?'disabled':''}`,'compact'):''}${button('ロード','load-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact')}${button('削除','delete-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact danger')}</div></section>`).join('')}`, footer:button('閉じる','close-modal') };
+  const canSave=!title&&run&&canManualSave(run,content)&&!pending&&readingPreviewIndex===null;
+  return { title:title?'旅の記録をロード':'セーブ / ロード', large:true, body:`<p class="small muted">このブラウザに保存します。手動セーブは地図や試練の区切り、再会漫画のイベント中に使えます。ロードすると選んだ地点へ戻り、オートセーブも更新されます。</p>${Object.entries(slotLabels).map(([id,label])=>`<section class="save-slot"><div class="save-slot-header"><h3>${label} ${id==='auto'?'<span class="save-badge">AUTO</span>':''}</h3><time class="small muted">${slots[id]?.savedAt?esc(new Date(slots[id].savedAt).toLocaleString('ja-JP')):''}</time></div>${slotSummary(slots[id])}<div class="button-row">${id!=='auto'?button('ここに保存','save-slot',`data-id="${id}" ${!canSave?'disabled':''}`,'compact'):''}${button('ロード','load-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact')}${button('削除','delete-slot',`data-id="${id}" ${!slots[id]?'disabled':''}`,'compact danger')}</div></section>`).join('')}`, footer:button('閉じる','close-modal') };
 }
 function modalMarkup() {
   if(!modal) return '';
@@ -294,19 +494,30 @@ function render() {
   const conversationScrollTop=previousConversation?.scrollTop || 0;
   const focusData=active?.dataset?.action?{action:active.dataset.action,id:active.dataset.id}:null;
   const modalScrollTop=modal && modal===renderedModal ? app.querySelector('[role="dialog"]')?.scrollTop || 0 : 0;
+  const liveRun=run;
+  if(liveRun && !title) syncReadingSession(liveRun);
+  const previewRun=readingPreviewIndex===null?null:readingHistory[readingPreviewIndex];
+  if(previewRun) run=previewRun;
   let body='';
-  if(title||!run) body=titlePage();
+  if(title&&chronicleScreen) body=chroniclesPage();
+  else if(title||!run) body=titlePage();
   else {
     switch(run.position.phase) {
       case 'commanderSelection': body=commanderPage(); break;
       case 'draft': body=draftPage(); break;
       case 'partyConfirmation': body=campPage(); break;
       case 'map': body=mapPage(); break;
+      case 'tutorial': body=tutorialPage(); break;
+      case 'storyEvent': body=content.prologue?storyPage():trialPage(); break;
       case 'intro': case 'departure': body=storyPage(); break;
+      case 'ending': body=content.officialEnding?endingPage():trialPage(); break;
+      case 'completed': body=content.officialEnding?finPage():trialPage(); break;
       default: body=trialPage();
     }
   }
-  app.innerHTML=header()+(error?`<div class="error-banner" role="alert"><p>${esc(error)}</p><div class="button-row">${button('再試行','retry','', 'compact')}${ready?button('保存済みをロード','saves','','compact'):''}</div></div>`:'')+body+(!title?'<footer class="footer-note">バウムガルテン王国の継承戦 / v0.3 基盤試作 · 正式な王国史は作成されません。</footer>':'')+modalMarkup()+(toast?`<div class="toast" role="status">${esc(toast)}</div>`:'')+(busy?'<div class="busy-corner" role="status">保存しています…</div>':'');
+  if(previewRun) run=liveRun;
+  const atFin=!title&&run?.position.phase==='completed'&&content.officialEnding;
+  app.innerHTML=(atFin?'':header())+(error?`<div class="error-banner" role="alert"><p>${esc(error)}</p><div class="button-row">${button('再試行','retry','', 'compact')}${ready?button('保存済みをロード','saves','','compact'):''}</div></div>`:'')+body+(!title&&!atFin?`<footer class="footer-note">${content.officialEnding?'バウムガルテン王国の継承戦':'バウムガルテン王国の継承戦 / v0.3 基盤試作 · 正式な王国史は作成されません。'}</footer>`:'')+modalMarkup()+(!atFin&&toast?`<div class="toast" role="status">${esc(toast)}</div>`:'')+(busy?'<div class="busy-corner" role="status">保存しています…</div>':'');
   if(busy) app.querySelectorAll('button').forEach(b=>b.disabled=true);
   const conversationText=app.querySelector('.conversation-text');
   if(conversationScrollId && conversationText?.dataset?.conversationId===conversationScrollId) {
@@ -362,16 +573,26 @@ async function transact(work, {after,message}={}) {
   } finally { busy=false; render(); }
 }
 async function perform(action) {
-  if(busy||pending) return;
+  if(busy||pending||readingPreviewIndex!==null) return;
   const oldPhase=run.position.phase;
   const oldScene=run.position.sceneId;
+  const page=action.type==='ACK_PAGE'?getCurrentTextPage(run,content):[];
+  const pageSnapshot=action.type==='ACK_PAGE'?structuredClone(run):null;
   const block=action.type==='ACK_TEXT'?getCurrentText(run,content):null;
   const blocks=action.type==='ACK_INTRODUCTION'
     ? introductionBlocks(oldScene).slice(run.position.blockIndex)
-    : action.type==='ACK_CONVERSATION' ? conversationBlocks(run.position.blockIndex) : block?[block]:[];
+    : action.type==='ACK_CONVERSATION' ? conversationBlocks(run.position.blockIndex)
+    : action.type==='ACK_PAGE' ? page : block?[block]:[];
   let next;
   try {
-    if(action.type==='ACK_INTRODUCTION') {
+    if(action.type==='ACK_PAGE') {
+      if(!blocks.length) return;
+      next=run;
+      for(const entry of blocks) {
+        if(getCurrentText(next,content)?.id!==entry.id) throw new Error('文章の表示位置が一致しません。');
+        next=transition(next,{type:'ACK_TEXT'},content);
+      }
+    } else if(action.type==='ACK_INTRODUCTION') {
       if(run.position.phase!=='trial' || run.position.stage!=='intro' || !blocks.length) return;
       next=run;
       for(const entry of blocks) {
@@ -388,16 +609,23 @@ async function perform(action) {
     } else next=transition(run,action,content);
   }
   catch(e) { notify(e.message); render(); return; }
+  if(pageSnapshot) rememberReadingPage(pageSnapshot);
   run=next;
   const expectedRevision=revision;
-  await transact(()=>storage.commitAuto(next,{expectedRevision,readTextKeys:blocks.map(entry=>entry.readKey)}));
+  const readTextKeys=blocks.map(entry=>entry.readKey);
+  const finishing=content.officialEnding&&next.position.phase==='ending'&&next.position.sceneId===content.officialEnding.lastSceneId&&!getCurrentText(next,content);
+  if(finishing) {
+    const record=buildEndingRecord(next,content);
+    await transact(()=>storage.recordCompletion(next,record,{expectedRevision,readTextKeys}),{after:result=>{run=result.run;}});
+    if (!pending && run.position.phase==='completed') { await refreshChronicles();render(); }
+  } else await transact(()=>storage.commitAuto(next,{expectedRevision,readTextKeys}));
   if(oldPhase!==run.position.phase || oldScene!==run.position.sceneId) window.scrollTo({top:0,behavior:'instant'});
 }
 async function load(id) {
   modal=null;
   const expectedRevision=slotsRevision;
   await transact(()=>storage.loadSlot(id,{expectedRevision}),
-    {after:result=>{content=contentForRun(result.run);run=result.run;title=false;},message:'保存した地点から再開しました。'});
+    {after:result=>{content=contentForRun(result.run);run=result.run;title=false;chronicleScreen=null;readingSession='';syncReadingSession();},message:'保存した地点から再開しました。'});
 }
 async function openSaves() {
   try { await refreshSlots(); modal=savesModal(); render(); }
@@ -408,10 +636,10 @@ async function startNew() {
   const next=createRun(defaultContent);
   const expectedRevision=slotsRevision;
   await transact(()=>storage.commitAuto(next,{expectedRevision}),
-    {after:()=>{content=defaultContent;run=next;title=false;},message:'新しい旅を記録しました。'});
+    {after:()=>{content=defaultContent;run=next;title=false;chronicleScreen=null;},message:'新しい旅を記録しました。'});
 }
 async function skipRead() {
-  if(busy||pending) return;
+  if(busy||pending||readingPreviewIndex!==null) return;
   const conversation=conversationBlocks(run.position.blockIndex);
   if(conversation.length) {
     if(conversation.every(block=>reader.readTextKeys.includes(block.readKey))) await perform({type:'ACK_CONVERSATION'});
@@ -437,25 +665,38 @@ async function handle(action,id) {
   if(busy) return;
   if(pending&&!['saves','load-slot','accept-confirm','cancel-confirm','close-modal','retry','memo','log','profile'].includes(action)) return;
   switch(action) {
+    case 'fin-title': if(run?.position.phase==='completed'&&content.officialEnding){title=true;modal=null;chronicleScreen=null;readingSession='';readingHistory=[];readingPreviewIndex=null;await refreshChronicles();render();} break;
+    case 'chronicles': await openChronicles(); break;
+    case 'chronicle-detail':
+      if(title&&chronicles.some(r=>r.completionKey===id)) {chronicleScroll=window.scrollY||0;chronicleScreen={key:id};render();window.scrollTo({top:0,behavior:'instant'});app.querySelector('.chronicle-page h1')?.focus?.({preventScroll:true});} break;
+    case 'chronicles-back': if(title) {chronicleScreen={};render();window.scrollTo({top:chronicleScroll,behavior:'instant'});} break;
+    case 'chronicles-title': if(title) {chronicleScreen=null;render();window.scrollTo({top:0,behavior:'instant'});} break;
+    case 'chronicles-refresh': await refreshChronicles();render(); break;
     case 'introduction': modal=introductionModal(id); render(); break;
     case 'ack-introduction': await perform({type:'ACK_INTRODUCTION'}); break;
     case 'ack-conversation': await perform({type:'ACK_CONVERSATION'}); break;
     case 'new':
       await refreshSlots();
-      if(slots.auto) confirmDialog('新しい旅をはじめる','<p>現在のオートセーブを、新しい周回で置き換えます。</p><p class="small muted">手動セーブ三枠、周回をまたぐ既読、王国史は保持されます。</p>',startNew,'新しい旅をはじめる');
+      if(slots.auto) confirmDialog('新しい旅をはじめる','<p>現在のオートセーブを、新しい周回で置き換えます。</p><p class="small muted">手動セーブ3枠、周回をまたぐ既読、王国史は保持されます。</p>',startNew,'新しい旅をはじめる');
       else await startNew();
       break;
     case 'continue':
       confirmDialog('つづきから','<p>オートセーブした地点から旅を再開します。</p>',()=>load('auto'),'再開する'); break;
     case 'title':
-      if(!title) confirmDialog('タイトルへ戻る','<p>現在の進行はオートセーブされています。タイトルへ戻りますか。</p>',()=>{modal=null;title=true;render();},'タイトルへ'); break;
+      if(title&&chronicleScreen) {chronicleScreen=null;render();}
+      else if(!title) confirmDialog('タイトルへ戻る','<p>現在の進行はオートセーブされています。タイトルへ戻りますか。</p>',async()=>{modal=null;title=true;chronicleScreen=null;await refreshChronicles();render();},'タイトルへ'); break;
     case 'select-commander': await perform({type:'SELECT_COMMANDER',commanderId:id}); break;
+    case 'tutorial-location': await perform({type:'INSPECT_TUTORIAL_LOCATION',locationId:id}); break;
+    case 'tutorial-choice': await perform({type:'DECIDE_TUTORIAL',choiceId:id}); break;
     case 'profile': modal=profileModal(id); render(); break;
     case 'toggle-party': await perform({type:'TOGGLE_PARTY',characterId:id}); modal=null; render(); break;
     case 'confirm-party': await perform({type:'CONFIRM_PARTY'}); break;
     case 'back-draft': await perform({type:'BACK_TO_DRAFT'}); break;
     case 'depart': await perform({type:'DEPART'}); break;
     case 'ack': await perform({type:'ACK_TEXT'}); break;
+    case 'ack-page': await perform({type:'ACK_PAGE'}); break;
+    case 'read-prev': readPrevious(); break;
+    case 'read-forward': readForward(); break;
     case 'skip': await skipRead(); break;
     case 'region': await perform({type:'START_REGION',regionId:id}); break;
     case 'return-map': await perform({type:'RETURN_MAP'}); break;
@@ -475,7 +716,7 @@ async function handle(action,id) {
     case 'log': modal=logModal(); render(); break;
     case 'saves': await openSaves(); break;
     case 'save-slot': {
-      if(!run||!canManualSave(run)||id==='auto') break;
+      if(!run||!canManualSave(run,content)||readingPreviewIndex!==null||id==='auto') break;
       const save=async()=>{
         const snapshot=structuredClone(run),expectedRevision=revision;
         modal=null;
@@ -500,6 +741,9 @@ async function handle(action,id) {
       break;
   }
 }
+app.addEventListener('error', event=>{
+  if (event.target.matches?.('.official-portrait img, .face-icon img, .event-cg img, .comic-figure img')) event.target.classList.add('image-unavailable');
+}, true);
 app.addEventListener('click', event=>{
   const target=event.target.closest('button[data-action]');
   if(!target||target.disabled) return;
@@ -521,6 +765,7 @@ async function init() {
     revision=await storage.getRevision();
     reader=await storage.getReaderProfile();
     await refreshSlots();
+    await refreshChronicles();
     ready=true;error='';
   } catch(e) {error=`保存領域を開けませんでした。${e.message}`;ready=false;}
   render();
