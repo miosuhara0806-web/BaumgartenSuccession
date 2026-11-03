@@ -3,6 +3,7 @@ import { createRun, transition, getCurrentText, getCurrentTextPage, getAvailable
   isLegalParty, getOpponentParty, getCrisisAssignments, getTotalScore, getTheoRemaining,
   canUseTheo, canManualSave, validateRun, trialWasReached, buildEndingRecord, getMapReturnChatter } from './engine.js';
 import { createStorage } from './storage.js';
+import { chronicleView, sortChronicles } from './chronicles.js';
 
 let content = defaultContent;
 const app = document.querySelector('#app');
@@ -33,6 +34,11 @@ let toastTimer;
 let readingSession = '';
 let readingHistory = [];
 let readingPreviewIndex = null;
+let chronicles = [];
+let chronicleScreen = null;
+let chronicleError = '';
+let chroniclesLoading = false;
+let chronicleScroll = 0;
 
 function button(label, action, extra='', kind='') {
   return `<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${label}</button>`;
@@ -170,10 +176,39 @@ function treeArt() {
   return '<img class="kingdom-emblem" src="./src/assets/kingdom-emblem.svg" width="360" height="420" alt="" aria-hidden="true">';
 }
 function titlePage() {
-  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">2人の指揮官、8人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}</nav>${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">${content.prologue?'王国を巡る、ふたりの継承戦':'第一の訪問地　アルバ'}</div></div></main>`;
+  return `<main class="title-page"><div class="title-copy"><div class="title-emblem" aria-hidden="true">${treeArt()}</div><p class="eyebrow">王国史の、一頁へ。</p><h1><span class="title-name">バウムガルテン王国の</span><span class="title-war">継承戦</span></h1><div class="title-flourish" aria-hidden="true"><span>✦</span></div><p class="lead">誰を連れているかで、<br>同じ国でも、見えるものが変わる。</p><p class="small muted">2人の指揮官、8人の同行候補。<br>編成と情報、現場での判断から紡ぐストラテジーADV。</p><nav class="title-menu" aria-label="タイトルメニュー">${button('<span>はじめから</span><span>→</span>','new',!ready?'disabled':'','primary')}${button('<span>つづきから</span><span>オートセーブ</span>','continue',!slots.auto||!ready?'disabled':'')}${button('<span>ロード</span><span>保存した旅を開く</span>','saves',!ready?'disabled':'')}${chronicles.length?button('<span>王国史</span><span>過去の継承を読む</span>','chronicles',!ready?'disabled':''):''}</nav>${chronicleError?`<p class="small muted" role="status">${esc(chronicleError)} ${button('再読込み','chronicles-refresh','','compact')}</p>`:''}${fixtureNote()}<p class="small muted" style="margin-top:15px">操作の目安：名前のカードを開き、詳細から同行者を選びます。</p></div><div class="title-art" aria-hidden="true"><div class="title-art-top">BAUMGARTEN · KINGDOM CHRONICLE</div>${treeArt()}<div class="title-art-label">${content.prologue?'王国を巡る、ふたりの継承戦':'第一の訪問地　アルバ'}</div></div></main>`;
 }
 function pageHeading(kicker, heading, body='', actions='') {
   return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${heading}</h1>${body?`<p class="muted small">${body}</p>`:''}</div>${actions?`<div class="button-row">${actions}</div>`:''}</div>`;
+}
+function chronicleFacts(view) {
+  return `<dl class="chronicle-facts">${[['クリア日時',view.date],['指揮官',view.commander],['即位者',view.sovereign],['最終継承点',view.score],['総合評価',view.rank]].map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`;
+}
+function chronicleText(label, text) {
+  if (!text) return '';
+  return `<details class="panel chronicle-text"><summary>${esc(label)}</summary><div class="chronicle-prose" role="region" aria-label="${esc(label)}" tabindex="0">${text.split(/\n\s*\n/).map(p=>`<p>${esc(p)}</p>`).join('')}</div></details>`;
+}
+function chroniclesPage() {
+  const record=chronicles.find(r=>r.completionKey===chronicleScreen?.key);
+  const retry=chronicleError?`<div class="notice" role="status">${esc(chronicleError)}${button('再読込み','chronicles')}</div>`:'';
+  const heading=(title,back,action)=>`<div class="page-heading"><div><p class="eyebrow">王国に刻まれた、旅の記録。</p><h1 tabindex="-1">${title}</h1></div>${button(back,action)}</div>`;
+  if (!record) {
+    return `<main class="page chronicle-page">${heading('王国史','タイトルへ','chronicles-title')}${retry}${chroniclesLoading?'<p class="muted" role="status">王国史を読み込んでいます…</p>':''}<div class="chronicle-list">${chronicles.map(r=>`<article class="panel chronicle-card">${chronicleFacts(chronicleView(r))}${button('記録を読む →','chronicle-detail',`data-id="${esc(r.completionKey)}"`)}</article>`).join('')}</div>${!chronicles.length&&!chroniclesLoading?'<p>保存された完成記録はありません。</p>':''}</main>`;
+  }
+  const view=chronicleView(record);
+  return `<main class="page chronicle-page">${heading('継承の記録','王国史一覧へ','chronicles-back')}<section class="panel">${chronicleFacts(view)}<h2>継承結果</h2><p>${esc(view.outcome)}</p><h2>旅の同行者</h2><ul>${view.party.map(p=>`<li>${esc(p.name)}</li>`).join('')}</ul><h2>各都市で採用した政策</h2><dl class="chronicle-policies">${view.policies.map(p=>`<div><dt>${esc(p.city)}</dt><dd>${esc(p.label)}</dd></div>`).join('')}</dl>${!view.policies.length?'<p class="muted">政策の記録はありません。</p>':''}<h2>統治傾向</h2><p>${esc(view.governance)}</p>${view.counts.length?`<p class="small muted">${view.counts.map(c=>`${esc(c.label)}：${c.count}`).join(' ／ ')}</p>`:''}</section><section class="chronicle-snapshots" aria-label="保存された物語">${chronicleText('終幕・エピローグ（保存本文）',view.epilogue)}${chronicleText('八人の談話（保存本文）',view.ensemble)}${view.afterwords.map(a=>chronicleText(`${a.name}の後日談（保存本文）`,a.text)).join('')}${!view.epilogue&&!view.ensemble&&!view.afterwords.length?'<p class="muted">本文の記録はありません。</p>':''}</section>${button('王国史一覧へ','chronicles-back')}</main>`;
+}
+async function refreshChronicles() {
+  try { chronicles=sortChronicles(await storage.listChronicles());chronicleError=''; }
+  catch(e) { chronicleError=`王国史を読み込めませんでした。${e.message}`; }
+}
+async function openChronicles() {
+  if (!title || chroniclesLoading) return;
+  toast='';clearTimeout(toastTimer);
+  chronicleScreen={};chroniclesLoading=true;render();
+  await refreshChronicles();
+  chroniclesLoading=false;render();window.scrollTo({top:0,behavior:'instant'});
+  app.querySelector('.chronicle-page h1')?.focus?.({preventScroll:true});
 }
 function stepStrip(active) {
   return `<div class="step-strip">${['指揮官を選ぶ','同行者を選ぶ','両陣営を確認'].map((x,i)=>`<span class="${i===active?'current':''}">${String(i+1).padStart(2,'0')}　${x}</span>`).join('')}</div>`;
@@ -462,7 +497,8 @@ function render() {
   const previewRun=readingPreviewIndex===null?null:readingHistory[readingPreviewIndex];
   if(previewRun) run=previewRun;
   let body='';
-  if(title||!run) body=titlePage();
+  if(title&&chronicleScreen) body=chroniclesPage();
+  else if(title||!run) body=titlePage();
   else {
     switch(run.position.phase) {
       case 'commanderSelection': body=commanderPage(); break;
@@ -579,6 +615,7 @@ async function perform(action) {
   if(finishing) {
     const record=buildEndingRecord(next,content);
     await transact(()=>storage.recordCompletion(next,record,{expectedRevision,readTextKeys}),{after:result=>{run=result.run;}});
+    if (!pending && run.position.phase==='completed') { await refreshChronicles();render(); }
   } else await transact(()=>storage.commitAuto(next,{expectedRevision,readTextKeys}));
   if(oldPhase!==run.position.phase || oldScene!==run.position.sceneId) window.scrollTo({top:0,behavior:'instant'});
 }
@@ -586,7 +623,7 @@ async function load(id) {
   modal=null;
   const expectedRevision=slotsRevision;
   await transact(()=>storage.loadSlot(id,{expectedRevision}),
-    {after:result=>{content=contentForRun(result.run);run=result.run;title=false;readingSession='';syncReadingSession();},message:'保存した地点から再開しました。'});
+    {after:result=>{content=contentForRun(result.run);run=result.run;title=false;chronicleScreen=null;readingSession='';syncReadingSession();},message:'保存した地点から再開しました。'});
 }
 async function openSaves() {
   try { await refreshSlots(); modal=savesModal(); render(); }
@@ -597,7 +634,7 @@ async function startNew() {
   const next=createRun(defaultContent);
   const expectedRevision=slotsRevision;
   await transact(()=>storage.commitAuto(next,{expectedRevision}),
-    {after:()=>{content=defaultContent;run=next;title=false;},message:'新しい旅を記録しました。'});
+    {after:()=>{content=defaultContent;run=next;title=false;chronicleScreen=null;},message:'新しい旅を記録しました。'});
 }
 async function skipRead() {
   if(busy||pending||readingPreviewIndex!==null) return;
@@ -626,7 +663,13 @@ async function handle(action,id) {
   if(busy) return;
   if(pending&&!['saves','load-slot','accept-confirm','cancel-confirm','close-modal','retry','memo','log','profile'].includes(action)) return;
   switch(action) {
-    case 'fin-title': if(run?.position.phase==='completed'&&content.officialEnding){title=true;modal=null;readingSession='';readingHistory=[];readingPreviewIndex=null;render();} break;
+    case 'fin-title': if(run?.position.phase==='completed'&&content.officialEnding){title=true;modal=null;chronicleScreen=null;readingSession='';readingHistory=[];readingPreviewIndex=null;await refreshChronicles();render();} break;
+    case 'chronicles': await openChronicles(); break;
+    case 'chronicle-detail':
+      if(title&&chronicles.some(r=>r.completionKey===id)) {chronicleScroll=window.scrollY||0;chronicleScreen={key:id};render();window.scrollTo({top:0,behavior:'instant'});app.querySelector('.chronicle-page h1')?.focus?.({preventScroll:true});} break;
+    case 'chronicles-back': if(title) {chronicleScreen={};render();window.scrollTo({top:chronicleScroll,behavior:'instant'});} break;
+    case 'chronicles-title': if(title) {chronicleScreen=null;render();window.scrollTo({top:0,behavior:'instant'});} break;
+    case 'chronicles-refresh': await refreshChronicles();render(); break;
     case 'introduction': modal=introductionModal(id); render(); break;
     case 'ack-introduction': await perform({type:'ACK_INTRODUCTION'}); break;
     case 'ack-conversation': await perform({type:'ACK_CONVERSATION'}); break;
@@ -638,7 +681,8 @@ async function handle(action,id) {
     case 'continue':
       confirmDialog('つづきから','<p>オートセーブした地点から旅を再開します。</p>',()=>load('auto'),'再開する'); break;
     case 'title':
-      if(!title) confirmDialog('タイトルへ戻る','<p>現在の進行はオートセーブされています。タイトルへ戻りますか。</p>',()=>{modal=null;title=true;render();},'タイトルへ'); break;
+      if(title&&chronicleScreen) {chronicleScreen=null;render();}
+      else if(!title) confirmDialog('タイトルへ戻る','<p>現在の進行はオートセーブされています。タイトルへ戻りますか。</p>',async()=>{modal=null;title=true;chronicleScreen=null;await refreshChronicles();render();},'タイトルへ'); break;
     case 'select-commander': await perform({type:'SELECT_COMMANDER',commanderId:id}); break;
     case 'tutorial-location': await perform({type:'INSPECT_TUTORIAL_LOCATION',locationId:id}); break;
     case 'tutorial-choice': await perform({type:'DECIDE_TUTORIAL',choiceId:id}); break;
@@ -719,6 +763,7 @@ async function init() {
     revision=await storage.getRevision();
     reader=await storage.getReaderProfile();
     await refreshSlots();
+    await refreshChronicles();
     ready=true;error='';
   } catch(e) {error=`保存領域を開けませんでした。${e.message}`;ready=false;}
   render();
