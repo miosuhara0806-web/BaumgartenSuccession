@@ -84,6 +84,8 @@ test('71-point Rosemond record lists Alphonse as sovereign; multiple records sor
   for (const name of ['ハロルド', 'フレデリカ', 'リゼット', 'サンドロ']) assert.ok(detail.includes(name));
   for (const p of Object.values(records[1].submittedPolicies)) assert.ok(detail.includes(p.labelAtCompletion));
   assert.match(detail, /<details/); assert.match(detail, /八人の談話（保存本文）/);
+  assert.match(detail, /終幕・エピローグ（保存本文）/);
+  assert.doesNotMatch(detail, /の後日談（保存本文）/);
   assert.equal(row.epilogue, records[1].epilogueSnapshot);
   assert.equal(row.ensemble, records[1].ensembleAfterwordSnapshot);
 });
@@ -91,6 +93,7 @@ test('71-point Rosemond record lists Alphonse as sovereign; multiple records sor
 test('list, details, text reading and back navigation write neither game saves nor reading nor history', async () => {
   const { app, storage } = await harness([lastPage()]);
   const before = await persisted(storage), state = app.state();
+  assert.equal(Object.keys(before.records[0].companionAfterwordSnapshots).length, 4);
   // Fail immediately if any viewer handler accidentally reaches a writer.
   for (const method of ['commitAuto', 'saveManual', 'loadSlot', 'deleteSlot', 'recordCompletion']) storage[method] = () => { throw new Error(`Viewer called ${method}`); };
   for (let i = 0; i < 3; i++) {
@@ -136,6 +139,7 @@ test('old and unknown editions show only saved information, escape markup, and n
   assert.match(app.html(), /&lt;script&gt;saved policy&lt;\/script&gt;/);
   assert.match(app.html(), /&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.doesNotMatch(app.html(), /<script>|<img src=x/);
+  assert.doesNotMatch(app.html(), /ハロルドの後日談|旧版の保存本文/);
   assert.deepEqual(history.sortChronicles([{ ...record, completionKey: 'a' }, { ...record, completionKey: 'b', recordedAt: '2026-11-01T00:00:00Z' }]).map(r => r.completionKey), ['b', 'a']);
 });
 
