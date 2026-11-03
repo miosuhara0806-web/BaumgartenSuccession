@@ -184,9 +184,11 @@ function pageHeading(kicker, heading, body='', actions='') {
 function chronicleFacts(view) {
   return `<dl class="chronicle-facts">${[['クリア日時',view.date],['指揮官',view.commander],['即位者',view.sovereign],['最終継承点',view.score],['総合評価',view.rank]].map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`;
 }
-function chronicleText(label, text) {
+function chronicleText(label, text, turns = null) {
   if (!text) return '';
-  return `<details class="panel chronicle-text"><summary>${esc(label)}</summary><div class="chronicle-prose" role="region" aria-label="${esc(label)}" tabindex="0">${text.split(/\n\s*\n/).map(p=>`<p>${esc(p)}</p>`).join('')}</div></details>`;
+  const paragraphs=turns ? turns.map(turn=>`<div class="chronicle-turn">${turn.name?`<div class="chronicle-speaker">${esc(turn.name)}</div>`:''}${turn.paragraphs.map(p=>`<p>${esc(p)}</p>`).join('')}</div>`).join('')
+    : text.split(/\n\s*\n/).map(p=>`<p>${esc(p)}</p>`).join('');
+  return `<details class="panel chronicle-text"><summary>${esc(label)}</summary><div class="chronicle-prose" role="region" aria-label="${esc(label)}" tabindex="0">${paragraphs}</div></details>`;
 }
 function chroniclesPage() {
   const record=chronicles.find(r=>r.completionKey===chronicleScreen?.key);
@@ -196,7 +198,7 @@ function chroniclesPage() {
     return `<main class="page chronicle-page">${heading('王国史','タイトルへ','chronicles-title')}${retry}${chroniclesLoading?'<p class="muted" role="status">王国史を読み込んでいます…</p>':''}<div class="chronicle-list">${chronicles.map(r=>`<article class="panel chronicle-card">${chronicleFacts(chronicleView(r))}${button('記録を読む →','chronicle-detail',`data-id="${esc(r.completionKey)}"`)}</article>`).join('')}</div>${!chronicles.length&&!chroniclesLoading?'<p>保存された完成記録はありません。</p>':''}</main>`;
   }
   const view=chronicleView(record);
-  return `<main class="page chronicle-page">${heading('継承の記録','王国史一覧へ','chronicles-back')}<section class="panel">${chronicleFacts(view)}<h2>継承結果</h2><p>${esc(view.outcome)}</p><h2>旅の同行者</h2><ul>${view.party.map(p=>`<li>${esc(p.name)}</li>`).join('')}</ul><h2>各都市で採用した政策</h2><dl class="chronicle-policies">${view.policies.map(p=>`<div><dt>${esc(p.city)}</dt><dd>${esc(p.label)}</dd></div>`).join('')}</dl>${!view.policies.length?'<p class="muted">政策の記録はありません。</p>':''}<h2>統治傾向</h2><p>${esc(view.governance)}</p>${view.counts.length?`<p class="small muted">${view.counts.map(c=>`${esc(c.label)}：${c.count}`).join(' ／ ')}</p>`:''}</section><section class="chronicle-snapshots" aria-label="保存された物語">${chronicleText('終幕・エピローグ（保存本文）',view.epilogue)}${chronicleText('八人の談話（保存本文）',view.ensemble)}${!view.epilogue&&!view.ensemble?'<p class="muted">本文の記録はありません。</p>':''}</section>${button('王国史一覧へ','chronicles-back')}</main>`;
+  return `<main class="page chronicle-page">${heading('継承の記録','王国史一覧へ','chronicles-back')}<section class="panel">${chronicleFacts(view)}<h2>継承結果</h2><p>${esc(view.outcome)}</p><h2>旅の同行者</h2><ul>${view.party.map(p=>`<li>${esc(p.name)}</li>`).join('')}</ul><h2>各都市で採用した政策</h2><dl class="chronicle-policies">${view.policies.map(p=>`<div><dt>${esc(p.city)}</dt><dd>${esc(p.label)}</dd></div>`).join('')}</dl>${!view.policies.length?'<p class="muted">政策の記録はありません。</p>':''}<h2>統治傾向</h2><p>${esc(view.governance)}</p>${view.counts.length?`<p class="small muted">${view.counts.map(c=>`${esc(c.label)}：${c.count}`).join(' ／ ')}</p>`:''}</section><section class="chronicle-snapshots" aria-label="保存された物語">${chronicleText('終幕・エピローグ（保存本文）',view.epilogue)}${chronicleText('八人の談話（保存本文）',view.ensemble,view.ensembleTurns)}${!view.epilogue&&!view.ensemble?'<p class="muted">本文の記録はありません。</p>':''}</section>${button('王国史一覧へ','chronicles-back')}</main>`;
 }
 async function refreshChronicles() {
   try { chronicles=sortChronicles(await storage.listChronicles());chronicleError=''; }

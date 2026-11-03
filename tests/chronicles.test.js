@@ -9,6 +9,7 @@ import { createStorage } from '../src/storage.js';
 import { MemoryIndexedDB } from './helpers/memory-indexeddb.js';
 import { endingRun } from './helpers/ending.js';
 import { content as oldEnding } from '../src/content/ending.js';
+import { content as mapReturn } from '../src/content/map-return.js';
 
 const source = (await readFile(new URL('../src/app.js', import.meta.url), 'utf8'))
   .replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/await init\(\);\s*$/, '');
@@ -88,6 +89,7 @@ test('71-point Rosemond record lists Alphonse as sovereign; multiple records sor
   assert.doesNotMatch(detail, /の後日談（保存本文）/);
   assert.equal(row.epilogue, records[1].epilogueSnapshot);
   assert.equal(row.ensemble, records[1].ensembleAfterwordSnapshot);
+  for (const person of Object.values(defaultContent.characters)) assert.ok(detail.includes(`<div class="chronicle-speaker">${person.name}</div>`));
 });
 
 test('list, details, text reading and back navigation write neither game saves nor reading nor history', async () => {
@@ -128,7 +130,7 @@ test('old and unknown editions show only saved information, escape markup, and n
   const record = { completionKey: 'past', contentVersion: 'unknown-old-content', commanderId: 'commander.rosemond',
     finalScore: 71, rank: 'success', outcome: '保存済みの旧結果', recordedAt: 'not-a-date',
     partyIds: ['char.harold'], submittedPolicies: { alba: { policyId: 'old', labelAtCompletion: '<script>saved policy</script>' } },
-    epilogueSnapshot: '<img src=x onerror=alert(1)>\n\n保存された本文', companionAfterwordSnapshots: { 'char.harold': '旧版の保存本文' } };
+    epilogueSnapshot: '<img src=x onerror=alert(1)>\n\n保存された本文', ensembleAfterwordSnapshot:'保存された地の文。\n\n「はい」\n\n続きの地の文。', companionAfterwordSnapshots: { 'char.harold': '旧版の保存本文' } };
   const before = structuredClone(record), view = history.chronicleView(record);
   assert.equal(view.sovereign, '記録なし'); assert.equal(view.outcome, record.outcome); assert.equal(view.epilogue, record.epilogueSnapshot);
   assert.equal(view.date, '記録なし'); assert.equal(view.governance, '記録なし');
@@ -140,7 +142,71 @@ test('old and unknown editions show only saved information, escape markup, and n
   assert.match(app.html(), /&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.doesNotMatch(app.html(), /<script>|<img src=x/);
   assert.doesNotMatch(app.html(), /ハロルドの後日談|旧版の保存本文/);
+  assert.doesNotMatch(app.html(), /chronicle-speaker/);
   assert.deepEqual(history.sortChronicles([{ ...record, completionKey: 'a' }, { ...record, completionKey: 'b', recordedAt: '2026-11-01T00:00:00Z' }]).map(r => r.completionKey), ['b', 'a']);
+});
+
+test('all three official editions restore the existing 71-point snapshot by full ordered manuscript equality', () => {
+  for (const pack of [oldEnding, mapReturn, defaultContent]) {
+    const r = lastPage(71, 'commander.rosemond', pack);
+    const record = { ...engine.buildEndingRecord(r, pack), contentVersion:pack.contentVersion };
+    const before = structuredClone(record), turns = history.restoreEnsembleTurns(record);
+    assert.ok(turns);
+    const rows = turns.flatMap(turn => turn.paragraphs.map(text => ({ text, speakerId:turn.speakerId, name:turn.name })));
+    const expected = pack.scenes['ending.ensemble'].blocks.map(id => pack.textBlocks[id]);
+    assert.equal(rows.length, 110);
+    assert.equal(rows.map(row => row.text).join('\n\n'), record.ensembleAfterwordSnapshot);
+    for (let i=0; i<rows.length; i++) {
+      assert.equal(rows[i].text, expected[i].text);
+      assert.equal(rows[i].speakerId, expected[i].speakerId || null);
+      assert.equal(rows[i].name, expected[i].speakerId ? pack.characters[expected[i].speakerId]?.name || pack.speakers[expected[i].speakerId].name : null);
+    }
+    // This quote occurs under other speakers elsewhere in the full game's text.
+    assert.ok(Object.values(pack.textBlocks).filter(b => b.text === '「はい」').length > 1);
+    assert.equal(rows.find(row => row.text === '「はい」').speakerId, 'char.harold');
+    assert.deepEqual(record, before);
+  }
+});
+
+test('unknown editions, altered order, repeated/omitted paragraphs and newline changes keep plain text', () => {
+  const r = lastPage(), record = { ...engine.buildEndingRecord(r, defaultContent), contentVersion:defaultContent.contentVersion };
+  const original = record.ensembleAfterwordSnapshot, paragraphs = original.split('\n\n');
+  for (const changed of [
+    { contentVersion:'unregistered-edition' },
+    { ensembleAfterwordSnapshot:original + '\n' },
+    { ensembleAfterwordSnapshot:original.replaceAll('\n', '\r\n') },
+    { ensembleAfterwordSnapshot:paragraphs.slice(1).join('\n\n') },
+    { ensembleAfterwordSnapshot:original.replace('「はい」', '「はい」\n\n「はい」') },
+    { ensembleAfterwordSnapshot:[paragraphs[1], paragraphs[0], ...paragraphs.slice(2)].join('\n\n') },
+    { ensembleAfterwordSnapshot:original.replace('「同じじゃない？」', '「同じだろ」') },
+  ]) {
+    const saved = { ...record, ...changed }, before = structuredClone(saved);
+    assert.equal(history.restoreEnsembleTurns(saved), null);
+    assert.equal(history.chronicleView(saved).ensemble, saved.ensembleAfterwordSnapshot);
+    assert.deepEqual(saved, before);
+  }
+});
+
+test('identical utterances at different manuscript positions retain different speakers and internal line breaks', () => {
+  // Run the actual recovery function against an isolated manuscript fixture;
+  // never modify the registered official packs to create repeated quotations.
+  const blocks = [
+    { text:'地の文\n改行', speakerId:null },
+    { text:'「はい」', speakerId:'char.harold' },
+    { text:'「はい」', speakerId:'char.frederica' },
+    { text:'「続き」', speakerId:'char.frederica' },
+    { text:'地の文', speakerId:null },
+  ];
+  const pack = { officialEnding:true, scenes:{'ending.ensemble':{blocks:blocks.map((_,i)=>String(i))}},
+    textBlocks:Object.fromEntries(blocks.map((b,i)=>[String(i),b])),
+    characters:{'char.harold':{name:'ハロルド'},'char.frederica':{name:'フレデリカ'}},commanders:{},speakers:{} };
+  const context = vm.createContext({ contentForRun:()=>pack, text:value=>typeof value === 'string' ? value : '' });
+  const restore = new vm.Script(`(${history.restoreEnsembleTurns.toString()})`).runInContext(context);
+  const snapshot = blocks.map(b=>b.text).join('\n\n');
+  const turns = structuredClone(restore({ensembleAfterwordSnapshot:snapshot}));
+  assert.deepEqual(turns.map(t=>t.name), [null,'ハロルド','フレデリカ',null]);
+  assert.deepEqual(turns[2].paragraphs, ['「はい」','「続き」']);
+  assert.equal(turns.flatMap(t=>t.paragraphs).join('\n\n'),snapshot);
 });
 
 test('history read failures preserve existing records, keep the game ready and allow a read-only retry', async () => {

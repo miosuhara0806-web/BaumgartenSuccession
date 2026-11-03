@@ -12,6 +12,38 @@ export function sortChronicles(records) {
   return [...records].sort((a, b) => timestamp(b) - timestamp(a) || a.completionKey.localeCompare(b.completionKey));
 }
 
+export function restoreEnsembleTurns(record) {
+  let pack;
+  // Speaker recovery must use this exact edition, never the default fallback edition.
+  try { pack = contentForRun(record); } catch { return null; }
+  const ids = pack.scenes['ending.ensemble']?.blocks;
+  const snapshot = text(record.ensembleAfterwordSnapshot);
+  if (!pack.officialEnding || !ids?.length || !snapshot) return null;
+  const rows = [];
+  for (const id of ids) {
+    const block = pack.textBlocks[id];
+    // Conditional or substituted future manuscripts need their own verified mapping.
+    if (!block || typeof block.text !== 'string' || block.condition || /\{(?:commander|rival|melee1|melee2|ranged|healer)\}/.test(block.text)) return null;
+    const speakerId = block.speakerId || null;
+    const name = speakerId ? pack.characters[speakerId]?.name || pack.commanders[speakerId]?.name || pack.speakers?.[speakerId]?.name : null;
+    if (speakerId && !name) return null;
+    rows.push({ speakerId, name, text:block.text });
+  }
+  // Compare the entire sequence, including every paragraph separator. Repeated
+  // utterances are resolved by their position; never search by a quote alone.
+  if (rows.map(row => row.text).join('\n\n') !== snapshot) return null;
+  const turns = [];
+  let offset = 0;
+  for (const row of rows) {
+    const paragraph = snapshot.slice(offset, offset + row.text.length);
+    offset += row.text.length + 2;
+    const previous = turns.at(-1);
+    if (previous && previous.speakerId === row.speakerId) previous.paragraphs.push(paragraph);
+    else turns.push({ speakerId:row.speakerId, name:row.name, paragraphs:[paragraph] });
+  }
+  return turns;
+}
+
 export function chronicleView(record) {
   let pack;
   try { pack = contentForRun(record); } catch { pack = defaultContent; }
@@ -38,6 +70,7 @@ export function chronicleView(record) {
     counts:Object.entries(dictionary(governance.counts)).filter(([, count]) => Number.isFinite(count))
       .map(([id, count]) => ({ label:tags[id] || id, count })),
     epilogue:text(record.epilogueSnapshot), ensemble:text(record.ensembleAfterwordSnapshot),
+    ensembleTurns:restoreEnsembleTurns(record),
     afterwords:Object.entries(dictionary(record.companionAfterwordSnapshots)).filter(([, value]) => text(value))
       .map(([id, value]) => ({ name:person(id), text:value })),
   };

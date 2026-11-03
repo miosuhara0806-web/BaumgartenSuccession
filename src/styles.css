@@ -288,6 +288,9 @@
 .chronicle-text summary { cursor:pointer; padding:4px 0; }
 .chronicle-prose { margin-top:16px; max-height:65dvh; overflow-y:auto; padding-right:12px; line-height:1.95; overflow-wrap:anywhere; }
 .chronicle-prose p { white-space:pre-wrap; }
+.chronicle-turn + .chronicle-turn { margin-top:18px; }
+.chronicle-speaker { margin-bottom:5px; font-size:.9rem; font-weight:600; color:var(--green); }
+.chronicle-speaker + p { margin-top:0; }
 @media(max-width:480px) { .chronicle-facts { grid-template-columns:1fr; gap:12px; } .chronicle-page .panel { padding:20px; } }
 .ending-reading .dialogue-turn { position:relative; padding-left:46px; }
 .ending-reading .dialogue-turn.narration-turn { padding-left:0; }

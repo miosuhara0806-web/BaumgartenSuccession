@@ -61,6 +61,17 @@ const path=require('node:path');
       await click(page,'chronicles-back');await click(page,'chronicle-detail',before.records[0].completionKey);
       const ensemble=page.locator('.chronicle-text').nth(1);await ensemble.locator('summary').click();
       assert.equal((await ensemble.locator('p').allTextContents()).join('\n\n'),before.records[0].ensembleAfterwordSnapshot);
+      const expectedTurns=(await import('../src/chronicles.js')).restoreEnsembleTurns(before.records[0]);
+      const shownTurns=await ensemble.locator('.chronicle-turn').evaluateAll(turns=>turns.map(turn=>({
+        name:turn.querySelector('.chronicle-speaker')?.textContent||null,
+        paragraphs:[...turn.querySelectorAll('p')].map(p=>p.textContent),
+      })));
+      assert.deepEqual(shownTurns,expectedTurns.map(t=>({name:t.name,paragraphs:t.paragraphs})));
+      assert.equal(shownTurns[0].name,null);
+      for(const person of Object.values(content.characters))assert.ok(shownTurns.some(t=>t.name===person.name));
+      assert.equal(await epilogue.locator('.chronicle-speaker').count(),0);
+      await layout(page);await page.screenshot({path:path.join(out,`${size}-ensemble-speakers.png`),fullPage:true});
+      assert.deepEqual(await snapshot(page),before);
       await click(page,'chronicles-back');await click(page,'chronicles-title');assert.deepEqual(await snapshot(page),before);
       await click(page,'continue');await click(page,'accept-confirm');assert.equal(await page.locator('.fin-page').count(),1);
       assert.equal((await snapshot(page)).records.length,1);
@@ -87,7 +98,24 @@ const path=require('node:path');
       for(const record of multiple.records){await click(page,'chronicle-detail',record.completionKey);assert.equal((await facts(page.locator('.chronicle-page')))['最終継承点'],`${record.finalScore}／100`);await click(page,'chronicles-back');}
       await layout(page);await page.screenshot({path:path.join(out,`${size}-multiple.png`),fullPage:true});
       await click(page,'chronicles-title');assert.deepEqual(await snapshot(page),multiple);
-      report.scenarios.push({size,unclearedHidden:true,unlockedAfterFIN:true,rose71Sovereign:'アルフォンス',readOnly:true,storedTextExact:true,finLoad:true,newRunRetains:true,manualSaveLoad:true,oldAndNewRecords:2,status:'passed'});
+      // A mismatched historical snapshot must remain plain, with no guessed names.
+      await page.evaluate(async()=>{
+        const{createStorage}=await import('./src/storage.js');
+        const{contentForRun}=await import('./src/content/catalog.js');const{validateRun}=await import('./src/engine.js');
+        const s=createStorage({validateRun:r=>validateRun(r,contentForRun(r))});const base=(await s.listChronicles())[0];
+        const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('baumgarten-succession-v1');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+        try{await new Promise((resolve,reject)=>{const tx=db.transaction('chronicles','readwrite');
+          tx.objectStore('chronicles').put({...base,id:'speaker-fallback',completionKey:'speaker-fallback',ensembleAfterwordSnapshot:'未照合の保存本文。\n\n「はい」'},'speaker-fallback');
+          tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}finally{db.close();}
+      });
+      await page.reload();await page.locator(q('new')).waitFor();
+      const fallbackBefore=await snapshot(page);
+      await click(page,'chronicles');await click(page,'chronicle-detail','speaker-fallback');
+      const fallback=page.locator('.chronicle-text').nth(1);await fallback.locator('summary').click();
+      assert.equal(await fallback.locator('.chronicle-speaker').count(),0);
+      assert.equal((await fallback.locator('p').allTextContents()).join('\n\n'),'未照合の保存本文。\n\n「はい」');
+      assert.deepEqual(await snapshot(page),fallbackBefore);
+      report.scenarios.push({size,unclearedHidden:true,unlockedAfterFIN:true,rose71Sovereign:'アルフォンス',readOnly:true,storedTextExact:true,ensembleSpeakers:true,narrationUnnamed:true,unmatchedPlain:true,finLoad:true,newRunRetains:true,manualSaveLoad:true,oldAndNewRecords:2,status:'passed'});
       console.log(`${size}: history, saved text, read-only browsing, FIN/load and new runs passed`);await context.close();
     }
     assert.deepEqual(report.errors,[]);await writeFile(path.join(out,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({scenarios:report.scenarios.length,errors:report.errors,status:'passed'}));
