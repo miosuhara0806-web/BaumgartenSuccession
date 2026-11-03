@@ -218,7 +218,7 @@ function mapPage() {
     const sub=!r.implemented?'準備中':status==='completed'?'完了 · 記録を開く':status==='active'?'攻略中 · 続きへ':'未訪問 · 試練を開始';
     return `<button type="button" class="map-place ${available&&status!=='completed'?'ready':''} ${status==='completed'?'complete':''}" data-region="${r.id}" data-action="${status==='completed'?'record':'region'}" data-id="${r.id}" ${!available?'disabled':''}><strong>${esc(r.name)}</strong><small>${sub}</small></button>`;
   }).join('');
-  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav>${mapReturnChatter()}</section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
+  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav>${mapReturnChatter()}</section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${!content.hideMapRest&&getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
 }
 function conversationButtons() {
   return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}">${faceIcon(c.participantIds[0])}<span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');
@@ -236,6 +236,16 @@ function readingActions(page, nextLabel='次へ →') {
 }
 function dialoguePanel(blocks, nextLabel='次へ →') {
   const page=Array.isArray(blocks)?blocks:[blocks].filter(Boolean);
+  if (content.endingReading && run.position.phase === 'ending') {
+    const turns=[];
+    for (const block of page) {
+      const last=turns.at(-1);
+      if (last && last.speakerId===block.speakerId) last.text.push(block.text);
+      else turns.push({speakerId:block.speakerId,text:[block.text]});
+    }
+    const text=turns.map(turn=>`<div class="dialogue-turn${turn.speakerId?'':' narration-turn'}">${turn.speakerId?speakerLabel(turn.speakerId):''}<div class="dialogue-text">${esc(turn.text.join('\n'))}</div></div>`).join('');
+    return `<section class="dialogue-panel"><div class="dialogue-turns">${text}</div>${readingActions(page,nextLabel)}</section>`;
+  }
   const multipleSpeakers=new Set(page.map(block=>block.speakerId || null)).size>1;
   const text=multipleSpeakers
     ? `<div class="dialogue-turns">${page.map(block=>`<div class="dialogue-turn${block.speakerId?'':' narration-turn'}">${block.speakerId?speakerLabel(block.speakerId):''}<div class="dialogue-text">${esc(block.text)}</div></div>`).join('')}</div>`
@@ -317,7 +327,11 @@ function endingPage() {
     const fallback='<p class="comic-fallback">戴冠式の挿絵を読み込めませんでした。本文はそのまま読み進められます。</p>';
     art=`<div class="coronation-reader"><details class="comic-zoom"><summary>拡大して見る</summary><div class="comic-zoom-scroll" role="region" aria-label="戴冠式の原画。上下左右にスクロールできます" tabindex="0"><figure class="comic-figure coronation-original">${img}${fallback}</figure></div></details><figure class="comic-figure coronation-fit">${img}${fallback}</figure></div>`;
   }
-  return `<main class="page story-page ending-page">${pageHeading('終章',esc(scene?.title||'物語の終わり'))}${art}${page.length?dialoguePanel(page,run.position.sceneId===content.officialEnding.lastSceneId?'物語を閉じる':'次へ →'):'<p>終幕の記録を保存しています。</p>'}<div class="button-row reunion-tools">${button('セーブ / ロード','saves')}${button('会話ログ','log')}</div></main>`;
+  const ensembleCg=scene?.ensembleCg;
+  if (ensembleCg && page.some(block=>ensembleCg.blockIds.includes(block.id))) {
+    art=`<figure class="event-cg ensemble-cg"><img src="${esc(ensembleCg.src)}" alt="${esc(ensembleCg.alt)}" width="${ensembleCg.width}" height="${ensembleCg.height}" decoding="async"><p class="event-cg-fallback">談話会の挿絵を読み込めませんでした。本文はそのまま読み進められます。</p></figure>`;
+  }
+  return `<main class="page story-page ending-page${content.endingReading?' ending-reading':''}">${pageHeading('終章',esc(scene?.title||'物語の終わり'))}${art}${page.length?dialoguePanel(page,run.position.sceneId===content.officialEnding.lastSceneId?'物語を閉じる':'次へ →'):'<p>終幕の記録を保存しています。</p>'}<div class="button-row reunion-tools">${button('セーブ / ロード','saves')}${button('会話ログ','log')}</div></main>`;
 }
 function finPage() {
   const marks=[[52,69],[25,24],[76,23],[22,84],[50,44]];

@@ -1,4 +1,5 @@
-import { content as current } from './map-return.js';
+import { content as current } from './ending-reading.js';
+import { content as mapReturn } from './map-return.js';
 import { content as ending } from './ending.js';
 import { content as prologue } from './prologue.js';
 import { content as dialogueUnified } from './companion-dialogue-unified.js';
@@ -16,6 +17,7 @@ export const defaultContent = current;
 export function contentForRun(run) {
   if (run?.contentVersion === legacy.contentVersion) return legacy;
   if (run?.contentVersion === current.contentVersion) return current;
+  if (run?.contentVersion === mapReturn.contentVersion) return mapReturn;
   if (run?.contentVersion === ending.contentVersion) return ending;
   if (run?.contentVersion === prologue.contentVersion) return prologue;
   if (run?.contentVersion === dialogueUnified.contentVersion) return dialogueUnified;

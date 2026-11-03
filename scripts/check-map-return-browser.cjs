@@ -4,7 +4,7 @@ const {mkdir, writeFile} = require('node:fs/promises');
 const path = require('node:path');
 
 (async () => {
-  const {content} = await import('../src/content/map-return.js');
+  const {content} = await import(process.env.MAP_RETURN_BROWSER_EDITION==='ending-reading'?'../src/content/ending-reading.js':'../src/content/map-return.js');
   const {createHelpers} = await import('../tests/helpers/prologue.js');
   const {drawMapReturn} = await import('../src/map-return.js');
   const h = createHelpers(content);
@@ -54,6 +54,10 @@ const path = require('node:path');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth+1));
     assert.equal(await page.locator('[role="dialog"]').count(),0);
     assert.ok(await page.locator(q('region','alba')).isEnabled());
+    if(content.hideMapRest) {
+      assert.equal(await page.locator('.map-sidebar [data-action="conversation"]').count(),0);
+      assert.ok(!(await page.locator('.map-sidebar').textContent()).includes('ひと休み'));
+    }
   }
   try {
     for (const [size, viewport] of [['pc',{width:1440,height:1000}],['mobile',{width:390,height:844}],['narrow',{width:320,height:740}]]) {
@@ -112,6 +116,15 @@ const path = require('node:path');
       assert.equal(await page.locator('.map-chatter').count(),0);
       assert.deepEqual((await saved(page)).run.mapReturnChatter,{currentKey:null,draws:{}});
       await page.screenshot({path:path.join(out,`${size}-no-chatter.png`),fullPage:true});
+      if(content.hideMapRest) {
+        await install(page,h.read(h.act(h.start(),'START_REGION',{regionId:'alba'})));
+        const voice=page.locator('.trial-sidebar [data-action="conversation"]').first();
+        assert.ok(await voice.isVisible());
+        await voice.click();await page.locator(q('ack-conversation')).waitFor();
+        await click(page,'ack-conversation');
+        assert.equal((await saved(page)).run.position.phase,'trial');
+        report.scenarios.push({size,mapRestHidden:true,trialVoices:true,status:'passed'});
+      }
       await context.close();
     }
     assert.deepEqual(report.errors,[]);

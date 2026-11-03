@@ -25,7 +25,7 @@ function seeded(r, predicate) {
 const gameplay = r => ({ ...r, mapReturnChatter: undefined });
 
 test('new edition keeps all historical content, saves and approved 16 lines intact', () => {
-  assert.equal(defaultContent, content);
+  assert.equal(contentForRun(engine.createRun(content)), content);
   assert.equal(contentForRun(engine.createRun(previous)), previous);
   assert.deepEqual({ ...content, contentVersion: previous.contentVersion, mapReturnLines: undefined }, { ...previous, mapReturnLines: undefined });
   assert.deepEqual(Object.keys(content.mapReturnLines).sort(), Object.keys(content.characters).sort());

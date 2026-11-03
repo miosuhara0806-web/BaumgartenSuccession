@@ -165,6 +165,13 @@ export function getCurrentTextPage(run, content) {
   const first = getCurrentText(run, content);
   if (!first) return [];
   const ids = blockIdsFor(run, content);
+  const ends = run.position.phase === 'ending' && content.scenes[run.position.sceneId]?.readingPageEnds;
+  if (ends) {
+    const end = ends.find(index => index > run.position.blockIndex);
+    return ids.slice(run.position.blockIndex, end).map((_, offset) => getCurrentText({
+      ...run, position: { ...run.position, blockIndex: run.position.blockIndex + offset },
+    }, content)).filter(Boolean);
+  }
   const speakerId = first.speakerId || null;
   const group = first.pageGroup;
   let characters = first.text.length;

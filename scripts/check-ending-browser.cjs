@@ -3,7 +3,9 @@ const assert=require('node:assert/strict');
 const {mkdir,writeFile}=require('node:fs/promises');
 const path=require('node:path');
 (async()=>{
-  const {content}=await import(process.env.ENDING_BROWSER_EDITION==='map-return'?'../src/content/map-return.js':'../src/content/ending.js');
+  const editions={'map-return':'map-return','ending-reading':'ending-reading'};
+  const {content}=await import(`../src/content/${editions[process.env.ENDING_BROWSER_EDITION]||'ending'}.js`);
+  const engine=await import('../src/engine.js');
   const {endingRun}=await import('../tests/helpers/ending.js');
   const out=path.resolve(process.env.ENDING_BROWSER_OUTPUT||'../preview/ending-20261101/browser');
   const url=process.env.ENDING_BROWSER_URL||'http://127.0.0.1:4173/';
@@ -20,9 +22,10 @@ const path=require('node:path');
   async function resume(page){await page.reload();await click(page,'continue');await click(page,'accept-confirm');}
   async function layout(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));}
   try {
-    for(const [size,viewport]of [['pc',{width:1440,height:1000}],['mobile',{width:390,height:844}]])
+    for(const [size,viewport]of process.env.ENDING_BROWSER_NARROW==='1'?[['narrow',{width:320,height:740}]]:[['pc',{width:1440,height:1000}],['mobile',{width:390,height:844}]])
     for(const commanderId of Object.keys(content.commanders))for(const score of [90,85,79]) {
       if(process.env.ENDING_BROWSER_CASE&&`${size}-${commanderId.split('.')[1]}-${score}`!==process.env.ENDING_BROWSER_CASE)continue;
+      if(process.env.ENDING_BROWSER_QUICK==='1'&&!['pc-alphonse-90','pc-rosemond-79','mobile-alphonse-79','mobile-rosemond-90','narrow-rosemond-85'].includes(`${size}-${commanderId.split('.')[1]}-${score}`))continue;
       const label=`${size}-${commanderId.split('.')[1]}-${score}`;
       const context=await browser.newContext({viewport,reducedMotion:report.scenarios.length===0?'no-preference':'reduce'});
       const page=await context.newPage();page.on('pageerror',error=>report.errors.push(`${label}: ${error.message}`));
@@ -33,9 +36,28 @@ const path=require('node:path');
         const s=createStorage({validateRun:r=>validateRun(r,contentForRun(r))});await s.commitAuto(run,{expectedRevision:await s.getRevision()});
       },initial);
       await resume(page);
-      const seen=new Set(),voices=new Set(),corrections=new Set();let pages=0,imageFailureChecked=false;
+      const seen=new Set(),voices=new Set(),corrections=new Set(),textIds=[],pagesByScene={};
+      let pages=0,imageFailureChecked=false,ensembleFailureChecked=false,maxDialogueHeight=0;
       while(await page.locator('.ending-page').count()) {
         assert.ok(++pages<220);const before=await saved(page),scene=before.run.position.sceneId;
+        pagesByScene[scene]=(pagesByScene[scene]||0)+1;
+        const blocks=engine.getCurrentTextPage(before.run,content);
+        textIds.push(...blocks.map(b=>b.id));
+        if(content.endingReading) {
+          assert.equal((await page.locator('.dialogue-text').allTextContents()).join('\n'),blocks.map(b=>b.text).join('\n'));
+          const height=await page.locator('.dialogue-panel').evaluate(el=>el.getBoundingClientRect().height);
+          maxDialogueHeight=Math.max(maxDialogueHeight,Math.ceil(height));
+          assert.ok(height<850,`${label}/${scene}: dialogue height ${height}`);
+          const cg=content.scenes['ending.ensemble'].ensembleCg;
+          const showCg=scene==='ending.ensemble'&&blocks.some(b=>cg.blockIds.includes(b.id));
+          assert.equal(await page.locator('.ensemble-cg').count(),showCg?1:0);
+          if(showCg) {
+            const img=page.locator('.ensemble-cg img');await img.evaluate(el=>el.decode());
+            assert.equal(await img.getAttribute('src'),cg.src);
+            assert.ok(await img.evaluate(el=>{const b=el.getBoundingClientRect();return el.naturalWidth===1672&&el.naturalHeight===941&&Math.abs(b.width/b.height-1672/941)<.01;}));
+          }
+          if(scene==='ending.ensemble'&&before.run.position.blockIndex===5)await page.screenshot({path:path.join(out,`${label}-ensemble-dialogue.png`),fullPage:true});
+        }
         assert.doesNotMatch(await page.locator('.ending-page').textContent(),/主人公|○○の場合|継承点\d|が単独最多/);
         const shownText=await page.locator('.ending-page').textContent();
         for(const text of ['エーレンフェルスで最後の判断を終え、一行は王城へ戻った。','「同じじゃない？」','「変えたくない人もいる」'])if(shownText.includes(text))corrections.add(text);
@@ -74,6 +96,11 @@ const path=require('node:path');
             await resume(page);await page.locator('.coronation-fit .comic-fallback').waitFor({state:'visible'});
             assert.deepEqual((await saved(page)).run,before.run);imageFailureChecked=true;
           }
+          if(content.endingReading&&scene==='ending.ensemble'&&size==='mobile'&&score===79) {
+            await page.route(target=>decodeURIComponent(target.pathname).includes('/八人の仲間たち_'),route=>route.abort());
+            await resume(page);await page.locator('.ensemble-cg .event-cg-fallback').waitFor({state:'visible'});
+            assert.deepEqual((await saved(page)).run,before.run);ensembleFailureChecked=true;
+          }
         }
         await click(page,'ack-page');
         if(await page.locator('.ending-page').count()) {
@@ -82,6 +109,9 @@ const path=require('node:path');
         }
       }
       const complete=await saved(page);assert.equal(complete.run.position.phase,'completed');assert.equal(complete.records.length,1);
+      const expectedIds=Object.values(content.scenes).filter(s=>s.id.startsWith('ending.')).flatMap(s=>s.blocks.map((_,blockIndex)=>engine.getCurrentText({...initial,position:{phase:'ending',sceneId:s.id,blockIndex}},content)).filter(Boolean).map(b=>b.id));
+      assert.deepEqual(textIds,expectedIds);
+      if(content.endingReading) {assert.equal(pagesByScene['ending.ensemble'],19);assert.ok(pages<=56);}
       assert.equal(complete.run.endingResult.sovereignId,initial.endingResult.sovereignId);assert.deepEqual(complete.run.trialResults,initial.trialResults);
       assert.equal(voices.size,8);assert.equal(corrections.size,3);assert.equal(await page.locator('.fin-city').count(),5);assert.equal(await page.locator('.fin-page h1').textContent(),'FIN');
       assert.equal(await page.locator('.app-header').count(),0);assert.doesNotMatch(await page.locator('.fin-page').textContent(),/継承点|統治/);
@@ -89,7 +119,8 @@ const path=require('node:path');
       await layout(page);await page.screenshot({path:path.join(out,`${label}-fin.png`),fullPage:true});
       await resume(page);assert.equal(await page.locator('.fin-page').count(),1);assert.equal((await saved(page)).records.length,1);
       await click(page,'fin-title');assert.equal(await page.locator('.title-menu').count(),1);
-      report.scenarios.push({label,score,sovereignId:initial.endingResult.sovereignId,pages,voices:voices.size,approvedTextCorrections:corrections.size,saveResume:true,readOnlyReview:true,completedRecords:1,imageFailureChecked,status:'passed'});
+      report.scenarios.push({label,score,sovereignId:initial.endingResult.sovereignId,pages,pagesByScene,maxDialogueHeight,voices:voices.size,approvedTextCorrections:corrections.size,saveResume:true,readOnlyReview:true,completedRecords:1,imageFailureChecked,ensembleFailureChecked,status:'passed'});
+      console.log(`${label}: ${pages} pages, ensemble ${pagesByScene['ending.ensemble']}, dialogue height <= ${maxDialogueHeight}px`);
       await context.close();
     }
     assert.deepEqual(report.errors,[]);await writeFile(path.join(out,'report.json'),JSON.stringify(report,null,2));
