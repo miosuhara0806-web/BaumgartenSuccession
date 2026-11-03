@@ -1,4 +1,6 @@
 // Pure, serializable game state. Persistence and cross-run read history live elsewhere.
+import { drawMapReturn } from './map-return.js';
+export { getMapReturnChatter } from './map-return.js';
 export const GOVERNANCE_TAGS = Object.freeze(['people', 'reform', 'stability', 'coordination', 'fairness']);
 const SETUP_PHASES = new Set(['intro', 'commanderSelection', 'tutorial', 'draft', 'partyConfirmation']);
 const PHASES = new Set([...SETUP_PHASES, 'departure', 'map', 'trial', 'conversation', 'theoReport', 'trialResult', 'chapterClosing', 'storyEvent', 'ending', 'completed']);
@@ -15,6 +17,8 @@ const completedCount = (run, content) => normalRegions(content).filter(region =>
 const activeRegionId = run => Object.keys(run.chapterProgress).find(id => run.chapterProgress[id].status === 'active');
 const mainPosition = run => run.position.returnPosition || run.position;
 const sceneKnown = (id, content) => id === 'map' || own(content.scenes, id);
+const mapReturnTrialAllowed = (trial, content) => !!trial &&
+  !(content.regions[trial.regionId].kind === 'final' && trial.kind === 'major');
 
 export function isLegalParty(partyIds, content) {
   return unique(partyIds) && partyIds.length === 4 && partyIds.every(id => own(content.characters, id)) &&
@@ -227,10 +231,11 @@ function beginTrial(run, trial, content, useRegionEntry = false) {
     sceneId, blockIndex: 0 };
 }
 
-function enterMap(run, content) {
+function enterMap(run, content, returnKey = null) {
   const inProgress = Object.entries(run.storyEvents).find(([, event]) => event.status === 'inProgress');
   assert(!inProgress, '進行中イベントを地図で上書きできません。');
   run.position = { phase: 'map' };
+  if (content.mapReturnLines) run.mapReturnChatter.currentKey = null;
   // These triggers are data extensions for independent full-game fixtures; absent in Alba.
   const count = completedCount(run, content);
   const candidates = Object.values(content.storyEvents).sort((a, b) => (a.trigger === 'afterTwoRegions' ? 0 : 1) - (b.trigger === 'afterTwoRegions' ? 0 : 1));
@@ -239,6 +244,11 @@ function enterMap(run, content) {
   if (event) {
     run.storyEvents[event.id] = { status: 'inProgress' };
     run.position = { phase: 'storyEvent', eventId: event.id, sceneId: event.presentationEntrySceneId || event.entrySceneId, blockIndex: 0 };
+  } else if (content.mapReturnLines && returnKey) {
+    const chatter = run.mapReturnChatter;
+    // null is a recorded miss, not a request to draw again.
+    if (!own(chatter.draws, returnKey)) chatter.draws[returnKey] = drawMapReturn(run, returnKey);
+    chatter.currentKey = returnKey;
   }
 }
 
@@ -284,7 +294,7 @@ function finishBlockSequence(run, content) {
       if (content.regions[p.regionId].kind === 'final' && content.finalChapterCompletion !== 'map') {
         if(content.officialEnding)run.endingResult=getSuccessionResult(run,content);
         run.position = content.endingSceneId ? { phase: 'ending', sceneId: content.endingSceneId, blockIndex: 0 } : { phase: 'ending' };
-      } else enterMap(run, content);
+      } else enterMap(run, content, content.regions[p.regionId].kind === 'normal' ? `region:${p.regionId}` : null);
       return true;
     }
     case 'storyEvent': {
@@ -318,6 +328,7 @@ export function createRun(content, { runId = globalThis.crypto.randomUUID(), now
     chapterProgress: Object.fromEntries(Object.keys(content.regions).map(id => [id, { status: 'notStarted' }])),
     trialResults: {}, heardConversationIds: [], acquiredInformation: {}, theoInvestigations: {}, storyEvents: {}, recentDialogueLog: [],
     ...(content.prologue ? { tutorial: { started: false, investigatedLocationIds: [], judgmentUnlocked: false, completed: false, postSuccessProcessed: false } } : {}),
+    ...(content.mapReturnLines ? { mapReturnChatter: { currentKey: null, draws: {} } } : {}),
   };
   normalize(run, content);
   validateRun(run, content);
@@ -440,9 +451,14 @@ export function transition(current, action, content) {
       normalize(run, content); break;
     }
     case 'RETURN_MAP':
-      if (p.phase === 'map') { enterMap(run, content); normalize(run, content); break; }
+      if (p.phase === 'map') {
+        if (!content.mapReturnLines) { enterMap(run, content); normalize(run, content); }
+        break;
+      }
       assert((p.phase === 'trial' && p.stage === 'decision' && !getCurrentText(run, content)) || (p.phase === 'trialResult' && p.stage === 'done'), '試練の区切りで地図へ戻れます。');
-      run.chapterProgress[p.regionId].resumePosition = clone(p); enterMap(run, content); normalize(run, content); break;
+      run.chapterProgress[p.regionId].resumePosition = clone(p);
+      enterMap(run, content, p.phase === 'trialResult' && mapReturnTrialAllowed(content.trials[p.trialId], content) ? `trial:${p.trialId}` : null);
+      normalize(run, content); break;
     case 'CONTINUE_TRIAL': {
       assert(p.phase === 'trialResult' && p.stage === 'done', '結果文を読み終えてください。');
       const region = content.regions[p.regionId];
@@ -605,6 +621,19 @@ export function validateRun(run, content) {
   if (!['intro', 'commanderSelection'].includes(run.position.phase)) assert(own(content.commanders, run.commanderId), '指揮官が未選択です。');
   if (!SETUP_PHASES.has(run.position.phase) || run.position.phase === 'partyConfirmation') assert(isLegalParty(run.partyIds, content), '編成が不正です。');
   if (['intro', 'commanderSelection'].includes(run.position.phase)) assert(run.commanderId === null && run.partyIds.length === 0, '選抜前の状態が不正です。');
+  if (content.mapReturnLines) {
+    const chatter = run.mapReturnChatter;
+    assert(object(chatter) && object(chatter.draws), '地図帰還のひと言記録が不正です。');
+    assert(chatter.currentKey === null || string(chatter.currentKey) && own(chatter.draws, chatter.currentKey), '地図帰還の表示先が不正です。');
+    for (const [key, draw] of Object.entries(chatter.draws)) {
+      const trialId = key.startsWith('trial:') ? key.slice(6) : null;
+      const regionId = key.startsWith('region:') ? key.slice(7) : null;
+      assert(trialId ? mapReturnTrialAllowed(content.trials[trialId], content) && own(run.trialResults, trialId)
+        : regionId && content.regions[regionId]?.kind === 'normal' && run.chapterProgress[regionId]?.status === 'completed', '未到達の地図帰還記録です。');
+      assert(draw === null || object(draw) && run.partyIds.includes(draw.speakerId) &&
+        [0, 1].includes(draw.lineIndex) && string(content.mapReturnLines[draw.speakerId]?.[draw.lineIndex]), '地図帰還の台詞が不正です。');
+    }
+  }
   if (content.prologue) {
     const t = run.tutorial, phase = run.position.phase;
     assert(object(t) && ['started', 'judgmentUnlocked', 'completed', 'postSuccessProcessed'].every(key => typeof t[key] === 'boolean'), 'チュートリアル記録が不正です。');

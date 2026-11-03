@@ -29,9 +29,9 @@ const collect=value=>Array.isArray(value)?value:Object.values(value).flatMap(col
 test('the static official manuscript preserves every quote and narration; only the common Rosemond reply is adjusted',async()=>{
   const text=await readFile(new URL('../docs/Baumgarten_ending_script_v2.txt',import.meta.url),'utf8');
   assert.equal(createHash('sha256').update(text).digest('hex'),manuscriptSha256);
-  for(const[name,hash]of [['アルフォンス','831255edc9a14484bd6024228c7564237a553598dfb47d9ffa2649c7a12ca57a'],['ローズモンド','1a447fe328b29fdf46ca866229def7cb4660b64f830b4145b0233002560443b5']]) {
+  for(const[name,hash]of [['アルフォンス','c8fb52e90fca454b4daeff5c6fbab09e0a656ba41bff5bb3b38dceb1192fd4d1'],['ローズモンド','1a447fe328b29fdf46ca866229def7cb4660b64f830b4145b0233002560443b5']]) {
     const image=await readFile(new URL(`../src/assets/戴冠式${name}.png`,import.meta.url));
-    assert.equal(createHash('sha256').update(image).digest('hex'),hash);assert.equal(image.readUInt32BE(16),1130);assert.equal(image.readUInt32BE(20),753);
+    assert.equal(createHash('sha256').update(image).digest('hex'),hash);assert.equal(image.readUInt32BE(16),name==='アルフォンス'?1536:1130);assert.equal(image.readUInt32BE(20),name==='アルフォンス'?1024:753);
   }
   const packs=[...text.matchAll(/```text\n([\s\S]*?)```/g)].slice(0,3).map(m=>m[1]);
   const rows=collect(script);
@@ -59,7 +59,7 @@ test('the static official manuscript preserves every quote and narration; only t
   ]);
 });
 test('the new edition preserves every trial, tag and accepted block; old saves stay in their original edition',()=>{
-  assert.equal(defaultContent,content);assert.equal(contentForRun(engine.createRun(previous)),previous);
+  assert.equal(contentForRun(engine.createRun(content)),content);assert.equal(contentForRun(engine.createRun(previous)),previous);
   for(const key of ['trials','characters','commanders','regions','conversations','information','investigations','textBlocks']) {
     if(key==='textBlocks')for(const[id,b]of Object.entries(previous.textBlocks))assert.deepEqual(content.textBlocks[id],b,id);
     else assert.deepEqual(content[key],previous[key],key);

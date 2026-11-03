@@ -1,7 +1,7 @@
 import { defaultContent, contentForRun } from './content/catalog.js';
 import { createRun, transition, getCurrentText, getCurrentTextPage, getAvailableConversations, getAvailableChoices,
   isLegalParty, getOpponentParty, getCrisisAssignments, getTotalScore, getTheoRemaining,
-  canUseTheo, canManualSave, validateRun, trialWasReached, buildEndingRecord } from './engine.js';
+  canUseTheo, canManualSave, validateRun, trialWasReached, buildEndingRecord, getMapReturnChatter } from './engine.js';
 import { createStorage } from './storage.js';
 
 let content = defaultContent;
@@ -203,6 +203,10 @@ function mapArt() {
   return `<figure class="kingdom-map"><img class="map-art" src="${image}" width="1004" height="753" alt="${description}"></figure><details class="map-detail"><summary>地図を拡大して見る</summary><div class="map-detail-scroll" role="region" aria-label="原寸の王国地図。上下左右にスクロールできます" tabindex="0"><img src="${image}" width="1004" height="753" alt="${description}"></div></details>`;
 }
 function chapterStatus(id) { return run.chapterProgress[id]?.status || 'notStarted'; }
+function mapReturnChatter() {
+  const chatter = getMapReturnChatter(run, content);
+  return chatter ? `<section class="map-chatter" aria-label="旅のひと言">${faceIcon(chatter.speakerId)}<div><p class="map-chatter-name">${esc(nameOf(chatter.speakerId))}</p><p class="map-chatter-text">「${esc(chatter.text)}」</p></div></section>` : '';
+}
 function mapPage() {
   const availableRegions=values(content.regions).filter(region=>region.implemented);
   const allDone=availableRegions.every(region=>chapterStatus(region.id)==='completed');
@@ -214,7 +218,7 @@ function mapPage() {
     const sub=!r.implemented?'準備中':status==='completed'?'完了 · 記録を開く':status==='active'?'攻略中 · 続きへ':'未訪問 · 試練を開始';
     return `<button type="button" class="map-place ${available&&status!=='completed'?'ready':''} ${status==='completed'?'complete':''}" data-region="${r.id}" data-action="${status==='completed'?'record':'region'}" data-id="${r.id}" ${!available?'disabled':''}><strong>${esc(r.name)}</strong><small>${sub}</small></button>`;
   }).join('');
-  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav></section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
+  return `<main class="page">${pageHeading('旅の現在地','王国を見渡す','地図から訪問地へ。旅の記録と、これまでに得た情報を確かめられます。')}${allDone?`<div class="notice"><strong>実装済み地域の試練が終了しました。</strong><br>${esc(content.completionNotice || '地図から各都市の記録を確認できます。セーブ・ロードも引き続き利用できます。王位の判定は行いません。')}</div>`:''}<div class="map-layout"><section class="map-board" aria-label="バウムガルテン王国の五地域">${mapArt()}<nav class="map-destinations" aria-label="訪問地と都市の記録">${regionButtons}</nav>${mapReturnChatter()}</section><aside class="map-sidebar"><section class="panel"><p class="eyebrow">${esc(nameOf(run.commanderId))}の旅</p><div class="stats"><div><div class="stat-label">継承点${content.contentStatus === 'fixture' ? ' · 仮配点' : ''}</div><div class="stat-value">${getTotalScore(run)}<span>/ 100</span></div></div><div><div class="stat-label">テオの調査</div><div class="stat-value">${getTheoRemaining(run)}<span>/ 2 回</span></div></div></div><p class="small muted">通常地域　${completed} / 4 完了</p></section><section class="panel"><h3>旅の同行者</h3>${sortedCharacters().filter(c=>run.partyIds.includes(c.id)).map(c=>`<div class="member-row">${member(c)}<button class="text-button small" data-action="profile" data-id="${c.id}">詳細</button></div>`).join('')}</section><section class="panel"><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('セーブ / ロード','saves')}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p><h3 class="section-label">導入小説を読む</h3><div class="info-tools">${introductionLinks()}</div>${getAvailableConversations(run,content).length?`<p class="section-label">ひと休み</p>${conversationButtons()}`:''}</section></aside></div><div style="margin-top:22px">${fixtureNote()}</div></main>`;
 }
 function conversationButtons() {
   return getAvailableConversations(run,content).map(c=>`<button class="bubble-button" data-action="conversation" data-id="${c.id}">${faceIcon(c.participantIds[0])}<span class="opinion-name">${esc(c.participantIds.map(nameOf).join('・'))}</span><span class="bubble-icon">話す</span></button>`).join('');

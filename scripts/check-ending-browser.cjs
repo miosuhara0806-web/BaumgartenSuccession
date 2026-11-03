@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const {mkdir,writeFile}=require('node:fs/promises');
 const path=require('node:path');
 (async()=>{
-  const {content}=await import('../src/content/ending.js');
+  const {content}=await import(process.env.ENDING_BROWSER_EDITION==='map-return'?'../src/content/map-return.js':'../src/content/ending.js');
   const {endingRun}=await import('../tests/helpers/ending.js');
   const out=path.resolve(process.env.ENDING_BROWSER_OUTPUT||'../preview/ending-20261101/browser');
   const url=process.env.ENDING_BROWSER_URL||'http://127.0.0.1:4173/';
@@ -27,7 +27,7 @@ const path=require('node:path');
       const context=await browser.newContext({viewport,reducedMotion:report.scenarios.length===0?'no-preference':'reduce'});
       const page=await context.newPage();page.on('pageerror',error=>report.errors.push(`${label}: ${error.message}`));
       await page.goto(url);await page.locator(q('new')).waitFor();
-      const initial=endingRun(score,commanderId);
+      const initial=endingRun(score,commanderId,content);
       await page.evaluate(async run=>{
         const{createStorage}=await import('./src/storage.js');const{validateRun}=await import('./src/engine.js');const{contentForRun}=await import('./src/content/catalog.js');
         const s=createStorage({validateRun:r=>validateRun(r,contentForRun(r))});await s.commitAuto(run,{expectedRevision:await s.getRevision()});
