@@ -398,7 +398,7 @@ function reunionPage(page, scene) {
       const members=leader.id===run.commanderId?run.partyIds.map(character):rival;
       return `<section class="panel"><h2>${esc(leader.name)}の一行</h2>${members.map(member).join('')}</section>`;
     }).join('');
-    body=`<p class="small muted">${esc(page[0].text)}</p><div class="camp-grid story-parties">${parties}</div>${readingActions(page,scene.nextLabel)}`;
+    body=`<p class="dialogue-text">${esc(page[0].text)}</p><div class="camp-grid story-parties">${parties}</div>${readingActions(page,scene.nextLabel)}`;
   } else if(stage==='comic') {
     const cg=scene.comic;
     const image=`<img src="${esc(cg.src)}" width="${cg.width}" height="${cg.height}" alt="${esc(cg.alt)}" decoding="async">`;
