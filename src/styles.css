@@ -124,7 +124,7 @@
 
 /* Preserved from the 2026-10-16 continuous novel presentation. */
 .novel-text {
-  color: #172b25;
+  color: var(--ink);
   /* Reserve room for Japanese line-end punctuation inside the text frame. */
   padding-inline: .5em;
   font-family: var(--serif);
@@ -152,7 +152,7 @@
 .conversation-text p:last-child { margin-bottom: 0; }
 .conversation-title { font-size: 1.1rem; line-height: 1.8; }
 .manuscript-text { line-break: strict; padding-inline: .5em; }
-.manuscript-text .narration { color: var(--muted); font-size: .95em; }
+/* Narration inherits the same body size and color as speech. */
 @media (max-width: 600px) {
   .opinion-list { grid-template-columns: 1fr; }
   .bubble-icon { white-space: nowrap; flex-shrink: 0; }
@@ -269,7 +269,6 @@
 .dialogue-panel .speaker { margin-bottom:6px; }
 .dialogue-panel .speaker::before { content:none; }
 .dialogue-turn .dialogue-text { min-height:0; }
-.narration-turn .dialogue-text { font-size:.94rem; color:var(--muted); }
 .face-icon { display:inline-block; position:relative; flex:0 0 auto; width:36px; height:36px; overflow:hidden; border-radius:50%; background:var(--wash); }
 .face-icon img { position:absolute; width:300%; max-width:none; height:auto; left:50%; top:0; transform:translateX(-50%); }
 .commander-icon img { width:160%; }
