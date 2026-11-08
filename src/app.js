@@ -106,22 +106,40 @@ function introductionBlocks(sceneId) {
   if(scene?.contentStatus!=='reviewPending' && scene?.presentation!=='novel') return [];
   return scene.blocks.map((_,blockIndex)=>getCurrentText({...run,position:{phase:'trial',sceneId,blockIndex}},content)).filter(Boolean);
 }
+// Audited presentation edits only: one-based paragraph -> one-based source newline.
+// Keep the reviewed narration contrast and every paragraph boundary. Never edit blocks or read keys.
+const introductionWrapJoins = {
+  'anchoring.small2.introduction': {
+    1:[1], 3:[1,2], 5:[1], 7:[1,2], 8:[1], 11:[1], 13:[1,2,3], 14:[1], 17:[1], 18:[1],
+    20:[1], 21:[1], 25:[1,2], 27:[1,2], 28:[2], 29:[1], 31:[1], 33:[1],
+    35:[1,2], 37:[1], 38:[1,2],
+  },
+  'hexerei.major.introduction': {
+    1:[1,2], 2:[1], 3:[1], 4:[1,2,3], 6:[1,2,3], 8:[1,2,3], 10:[1,2,3],
+    11:[1,2], 13:[1], 14:[1], 15:[1], 16:[1,2], 17:[1], 19:[1],
+  },
+};
+function introductionParagraphText(sceneId, paragraph, paragraphNumber) {
+  const joins=introductionWrapJoins[sceneId]?.[paragraphNumber];
+  if(!joins) return paragraph;
+  return paragraph.split('\n').map((line,index)=>(index&&!joins.includes(index)?'\n':'')+line).join('');
+}
 function introductionText(sceneId) {
   const paragraphs=introductionBlocks(sceneId).flatMap(block=>block.text.split('\n\n'));
-  return `<article class="novel-text" aria-label="小説本文">${paragraphs.map(paragraph=>`<p>${esc(paragraph)}</p>`).join('')}</article>`;
+  return `<article class="novel-text" aria-label="小説本文">${paragraphs.map((paragraph,index)=>`<p>${esc(introductionParagraphText(sceneId,paragraph,index+1))}</p>`).join('')}</article>`;
 }
 function introductionPanel() {
   const blocks=introductionBlocks(run.position.sceneId);
   const allRead=blocks.every(block=>reader.readTextKeys.includes(block.readKey));
   const someRead=blocks.some(block=>reader.readTextKeys.includes(block.readKey));
   const remainingRead=blocks.slice(run.position.blockIndex).every(block=>reader.readTextKeys.includes(block.readKey));
-  return `<section class="dialogue-panel"><p class="small muted">${esc(content.scenes[run.position.sceneId].introductionLabel || '導入小説 · 10月16日版')}</p>${introductionText(run.position.sceneId)}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('読了して進む →','ack-introduction','','primary')}</div></div></section>`;
+  return `<section class="dialogue-panel"><p class="small muted">導入小説</p>${introductionText(run.position.sceneId)}<div class="dialogue-actions"><span class="read-indicator">${allRead?'既読':someRead?'一部既読':'未読'}</span><div class="button-row"><button class="text-button small" data-action="skip" ${!remainingRead?'disabled':''}>既読スキップ</button>${button('読了して進む →','ack-introduction','','primary')}</div></div></section>`;
 }
 function introductionModal(trialId) {
   if(content.prologue&&(!run||!trialWasReached(trialId,run,content))) return null;
   const scene=content.scenes[content.trials[trialId]?.introductionSceneId];
   if(!scene) return null;
-  return {title:scene.title,body:`<p class="small muted">${esc(scene.introductionLabel || '10月16日版の導入小説')}<br>閲覧のみ。進行・得点・情報・既読は変更しません。</p>${introductionText(scene.id)}`,footer:button('閉じる','close-modal')};
+  return {title:scene.title,body:`<p class="small muted">導入小説<br>閲覧のみ。進行・得点・情報・既読は変更しません。</p>${introductionText(scene.id)}`,footer:button('閉じる','close-modal')};
 }
 
 function portrait(person, cls='') {
