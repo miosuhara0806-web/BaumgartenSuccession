@@ -188,7 +188,7 @@ function positionLabel(state) {
   return labels[p.phase] || p.phase;
 }
 function header() {
-  return `<header class="app-header"><button class="brand" data-action="title"><span class="seal" aria-hidden="true">樹</span><span>バウムガルテン王国の継承戦</span></button><div class="header-tools"><span class="save-light">${busy?'保存中…':pending?'未保存':run?'自動保存済み':content.officialEnding?'BAUMGARTEN':'ALBA / PROTOTYPE'}</span><button class="text-button" data-action="saves" ${!ready?'disabled':''}>${title?'ロード':'セーブ / ロード'}</button></div></header>`;
+  return `<header class="app-header"><button class="brand" data-action="title"><img class="seal" src="./src/assets/icons/life-tree-48.png" width="38" height="38" alt="" aria-hidden="true"><span>バウムガルテン王国の継承戦</span></button><div class="header-tools"><span class="save-light">${busy?'保存中…':pending?'未保存':run?'自動保存済み':content.officialEnding?'BAUMGARTEN':'ALBA / PROTOTYPE'}</span><button class="text-button" data-action="saves" ${!ready?'disabled':''}>${title?'ロード':'セーブ / ロード'}</button></div></header>`;
 }
 function treeArt() {
   return '<img class="kingdom-emblem" src="./src/assets/kingdom-emblem.svg" width="360" height="420" alt="" aria-hidden="true">';
