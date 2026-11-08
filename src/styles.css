@@ -6,6 +6,20 @@
 @media(max-width:760px){.app-header{height:66px;padding:0 18px;gap:8px}.brand{font-size:.86rem;gap:8px}.brand .seal{width:25px;height:31px;font-size:1rem}.header-tools{gap:0}.header-tools .text-button{padding:8px}.save-light{display:none}.title-page{grid-template-columns:1fr;padding:40px 25px;gap:30px}.title-copy{max-width:none}.title-copy h1{font-size:2.25rem}.title-art{min-height:300px;max-height:350px;grid-row:2}.title-art svg{max-height:300px;width:80%}.title-art-top{top:30px}.title-art-label{bottom:28px}.title-menu{max-width:none}.page{padding:27px 18px 35px}.page-heading{display:block;margin-bottom:23px}.page-heading h1{font-size:1.65rem}.page-heading .button-row{margin-top:17px}.commander-grid{grid-template-columns:1fr;gap:16px}.commander-card{grid-template-columns:68px 1fr;padding:23px 20px}.commander-card .portrait.commander{min-height:126px}.commander-card h2{font-size:1.45rem}.card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.character-card .portrait{min-height:103px;font-size:1.8rem}.character-card h3{font-size:.97rem}.draft-toolbar{padding:15px;display:block}.role-counts{justify-content:space-between;gap:8px}.draft-toolbar .button{margin-top:14px;width:100%}.camp-grid{grid-template-columns:1fr;gap:17px}.map-layout,.trial-layout{grid-template-columns:1fr}.map-board{min-height:480px}.map-place{min-width:130px;max-width:44%;padding:10px}.map-place[data-region="hexerei"]{left:25%;top:26%}.map-place[data-region="anchoring"]{left:74%;top:26%}.map-place[data-region="rude"]{left:26%;top:84%}.map-sidebar{grid-template-columns:1fr 1fr;gap:13px}.map-sidebar .panel{padding:16px;min-width:0}.map-sidebar>.panel:last-child{grid-column:1/-1}.map-sidebar .member{font-size:.78rem;gap:7px}.map-sidebar .member-avatar{width:26px;height:31px}.map-sidebar .stat-value{font-size:1.8rem}.stats{gap:5px}.trial-sidebar{grid-template-columns:1fr 1fr;gap:13px}.trial-sidebar .panel{padding:17px}.trial-sidebar .panel:first-child{grid-column:1/-1}.bubble-button{width:100%;margin:9px 0}.opinion-list{display:grid;grid-template-columns:1fr 1fr;gap:9px}.dialogue-panel{padding:24px;min-height:245px}.dialogue-text{font-size:1rem}.dialogue-actions{gap:8px}.dialogue-actions>.button-row{gap:5px}.dialogue-actions .button{padding:10px 16px}.choice{padding:17px}.chapter-path{gap:7px;font-size:.72rem}.chapter-path span+span:before{margin-right:7px}.record-summary{gap:8px}.record-summary .panel{padding:13px}.record-summary h3{font-size:.8rem}.record-summary strong{font-size:1.5rem}.footer-note{padding:0 18px 20px}.modal-backdrop{padding:14px}.modal{max-height:94dvh}.modal-header{padding:15px 19px}.modal-body{padding:21px}.modal-footer{padding:16px 20px}.profile-layout{grid-template-columns:72px 1fr;gap:16px}.profile-layout .portrait{height:120px}.error-banner{display:block;padding:14px 18px}.error-banner .button-row{margin-top:10px}.save-slot-header{display:block}.save-slot-header .muted{display:block;margin-top:4px}.fixture-note{font-size:.72rem}.title-copy .lead{font-size:1rem}.record-summary .small{font-size:.7rem}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
+/* Header only: use the approved compact crest without changing title artwork. */
+.brand .seal {
+  display:block;
+  flex:0 0 auto;
+  width:38px;
+  height:38px;
+  border:0;
+  clip-path:none;
+  object-fit:contain;
+}
+@media(max-width:760px) {
+  .brand .seal { width:30px; height:30px; }
+}
+
 /* Title decoration only. The game screens keep their existing palette and layout. */
 @font-face {
   font-family: 'Kaisei Decol Logo';
