@@ -157,13 +157,13 @@ function portrait(person, cls='') {
   return `<div class="portrait ${cls}" aria-label="${esc(person.name)}の仮画像枠"><span aria-hidden="true">${esc(person.name.slice(0,1))}</span><small>肖像 準備中</small></div>`;
 }
 // Shared by dialogue labels and rosters, including future ensemble conversations.
-function faceIcon(id) {
+function faceIcon(id, fallback=null) {
   const fixed = {
     'commander.alphonse': {src:'./src/assets/portraits/commander-alphonse.png', commander:true},
     'commander.rosemond': {src:'./src/assets/portraits/commander-rosemond.png', commander:true},
     'support.king': {src:'./src/assets/kingdom-emblem.svg', emblem:true},
   };
-  const asset=content.portraits?.[id] || defaultContent.portraits?.[id] || fixed[id];
+  const asset=content.portraits?.[id] || defaultContent.portraits?.[id] || fixed[id] || fallback;
   if(!asset) return '';
   return `<span class="face-icon${asset.emblem?' emblem-icon':asset.commander?' commander-icon':''}" aria-hidden="true"><img src="${esc(asset.src)}" alt=""></span>`;
 }
@@ -282,7 +282,7 @@ function conversationButtons() {
 function trialSidebar() {
   if(readingPreviewIndex!==null) return '<aside class="trial-sidebar"><section class="panel"><h3>読み返し中</h3><p class="small muted">「次へ」で現在の進行へ戻れます。読み返し中は進行操作を行いません。</p></section></aside>';
   const decision=run.position.phase==='trial'&&run.position.stage==='decision';
-  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p></section><section class="panel"><h3>テオの調査</h3><p class="small">テオは王国の密偵。各地の記録や現地の情報を調べ、指揮官の判断を助ける人物です。ただし、政策の正解を教えてくれるわけではありません。</p><p class="small muted">調査は旅全体で合計2回まで、各都市の大試練で最大1回です。</p><p class="small muted">残り ${getTheoRemaining(run)} / 2 回</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
+  return `<aside class="trial-sidebar"><section class="panel"><h3>同行者の声</h3>${decision?`<div class="opinion-list">${conversationButtons() || '<p class="small muted">この場面で聞ける話はありません。</p>'}</div><p class="small muted">話を聞かずに判断へ進むこともできます。</p>`:`<div class="roster">${run.partyIds.map(id=>member(character(id))).join('')}</div>`}</section><section class="panel"><h3>旅の手帳</h3><div class="info-tools">${button('情報メモ','memo')}${button('会話ログ','log')}${button('導入小説を読む','introduction',`data-id="${run.position.trialId || run.position.returnPosition?.trialId || 'alba.small1'}"`)}</div><p class="small muted">記録された情報は「情報メモ」からいつでも確認できます。</p></section><section class="panel"><h3 class="theo-heading">${faceIcon('support.theo', {src:'./src/assets/portraits/companion-theo.png'})}<span>テオの調査</span></h3><p class="small">テオは王国の密偵。各地の記録や現地の情報を調べ、指揮官の判断を助ける人物です。ただし、政策の正解を教えてくれるわけではありません。</p><p class="small muted">調査は旅全体で合計2回まで、各都市の大試練で最大1回です。</p><p class="small muted">残り ${getTheoRemaining(run)} / 2 回</p>${decision&&content.trials[run.position.trialId]?.kind==='major'?(canUseTheo(run,content)?button('調査を頼む','theo','','wide'):`<p class="small">${run.theoInvestigations[run.position.regionId]?'この地域は調査済みです。報告は情報メモとログから確認できます。':'この旅の調査回数を使い切りました。'}</p>`):''}</section></aside>`;
 }
 function readingActions(page, nextLabel='次へ →') {
   const allRead=page.every(block=>reader.readTextKeys.includes(block.readKey));
@@ -339,7 +339,7 @@ function assignments(choice) {
 function choicesPanel() {
   const trial=content.trials[run.position.trialId];
   const back=previousReadingButton();
-  return `<section>${back?`<div class="button-row" style="margin-bottom:14px">${back}</div>`:''}<div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'3つの作戦は、いずれも4人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
+  return `<section>${back?`<div class="button-row" style="margin-bottom:14px">${back}</div>`:''}<div class="panel"><h2>${esc(trial.decisionHeading || (trial.interaction==='crisisPlan'?'作戦を組む':'判断を選ぶ'))}</h2><p class="small muted">${trial.interaction==='crisisPlan'?'3つの作戦は、いずれも4人全員が関与します。同行者の情報を確認し、作戦を一つ選んでください。':'同行者の声や情報メモを確認できます。選んだ案は、次の確認画面で確定します。'}</p>${trial.kind==='major'&&canUseTheo(run,content)?'<p class="small muted">大試練では「テオの調査」も利用できます。必要なら判断前に確認してください。</p>':''}${trial.kind==='major'?'<p class="small">ここで選ぶ政策は、現王への提出案です。この場で制度を実施するものではありません。</p>':''}</div><p class="section-label">${trial.interaction==='crisisPlan'?'作戦セット · 3 択':'提出できる案'}</p><div class="choice-list">${getAvailableChoices(run,content).map((c,i)=>`<button class="choice" data-action="choice" data-id="${c.id}"><span class="choice-head"><span class="choice-number">${String(i+1).padStart(2,'0')}</span><span class="choice-title">${esc(c.label)}</span></span>${c.description?`<div class="choice-description">${esc(c.description)}</div>`:''}${trial.interaction==='crisisPlan'?assignments(c):''}</button>`).join('')}</div></section>`;
 }
 function trialPage() {
   const p=run.position;
