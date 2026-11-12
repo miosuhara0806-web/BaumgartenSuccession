@@ -364,3 +364,5 @@
 @keyframes fin-appear { from {opacity:0} to {opacity:1} }
 @keyframes fin-darken { from {opacity:1} to {opacity:0} }
 @media(prefers-reduced-motion:reduce) { .fin-map,.fin-seal,.fin-copy,.fin-actions { animation:none; opacity:1; } .fin-veil { animation:none; opacity:0; } }
+
+.trial-sidebar .theo-heading{display:flex;align-items:center;gap:10px}

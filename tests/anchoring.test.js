@@ -41,7 +41,7 @@ async function harness(snapshot, readTextKeys = []) {
   new vm.Script(appSource + `
     render=()=>{};
     globalThis.api={ initialize(state,rev,profile){run=state;content=contentForRun(state);revision=rev;slotsRevision=rev;reader=profile;ready=true;title=false;},
-    state(){return structuredClone({run,reader,pending:!!pending});},handle,perform,load,openSaves,trialPage,memoBody,logModal,startNew };
+    state(){return structuredClone({run,reader,pending:!!pending});},setRun(value){run=value;},handle,perform,load,openSaves,trialPage,memoBody,logModal,startNew };
   `).runInContext(context);
   context.api.initialize(snapshot, saved.revision, saved.readerProfile);
   return { app: context.api, storage };
@@ -246,4 +246,19 @@ test('all nine result screens show the exact adopted prose and evaluation and gr
     }
     r = next(choose(r, 'b'));
   }
+});
+
+
+test('Theo guidance follows availability and the sidebar uses his existing face', async () => {
+  const {app} = await harness(major());
+  const guidance = '大試練では「テオの調査」も利用できます。必要なら判断前に確認してください。';
+  const available = app.state().run;
+  assert.ok(app.trialPage().includes(guidance));
+  assert.match(app.trialPage(), /theo-heading[^]*companion-theo\.png[^]*テオの調査/);
+  app.setRun(enter());
+  assert.ok(!app.trialPage().includes(guidance));
+  const used = structuredClone(available); used.theoInvestigations.anchoring = 'investigation.anchoring';
+  app.setRun(used); assert.ok(!app.trialPage().includes(guidance));
+  const exhausted = structuredClone(available); exhausted.theoInvestigations.alba = 'investigation.alba'; exhausted.theoInvestigations.hexerei = 'investigation.hexerei';
+  app.setRun(exhausted); assert.ok(!app.trialPage().includes(guidance));
 });
