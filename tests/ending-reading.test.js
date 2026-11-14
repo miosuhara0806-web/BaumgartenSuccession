@@ -23,7 +23,7 @@ async function harness(snapshot) {
   new vm.Script(source + `
     render=()=>syncReadingSession();
     run=snapshot;content=contentForRun(run);reader=saved.readerProfile;revision=saved.revision;slotsRevision=revision;ready=true;title=false;syncReadingSession();
-    globalThis.api={perform,handle,load,openSaves,mapPage,trialSidebar,endingPage,
+    globalThis.api={perform,handle,load,openSaves,mapPage,trialPage,trialSidebar,endingPage,
       state:()=>structuredClone({run,reader,pending:!!pending,readingPreviewIndex}),
       html:()=>endingPage(),
       preview:()=>{const live=run;run=readingHistory[readingPreviewIndex];const html=endingPage();run=live;return html;}};
@@ -51,7 +51,11 @@ test('presentation edition preserves all original content and eleven historical 
     engine.validateRun(saved, historical);
     assert.deepEqual(saved, run);
   }
-  assert.deepEqual(content.textBlocks, previous.textBlocks);
+  const { 'text.alba.closing': currentClosing, ...otherBlocks } = content.textBlocks;
+  const { 'text.alba.closing': previousClosing, ...previousBlocks } = previous.textBlocks;
+  assert.deepEqual(otherBlocks, previousBlocks);
+  assert.deepEqual(currentClosing, { ...previousClosing,
+    text: 'アルバでの三つの判断を記録しました。今回提出した政策は、あくまで現王に示す案であり、ここで実施が決まるものではありません。\n\nここまでの経験も、次の都市での判断につながっていくでしょう。\n\n地図に戻り、次の目的地へ進んでください。', textRevision: 2 });
   for (const key of ['characters', 'commanders', 'trials', 'regions', 'conversations', 'information', 'investigations', 'officialEnding', 'mapReturnLines', 'portraits']) {
     assert.deepEqual(content[key], previous[key], key);
   }
@@ -66,6 +70,36 @@ test('presentation edition preserves all original content and eleven historical 
   assert.equal(image.readUInt32BE(16), cg.width); assert.equal(image.readUInt32BE(20), cg.height);
   assert.equal(createHash('sha256').update(image).digest('hex'), 'cc63c18492c7f1e2746c754335beb8e3b37d08c8bfa6bc3cb9c81367e0baa79a');
   assert.deepEqual(cg.blockIds, content.scenes['ending.ensemble'].blocks.slice(0, 5));
+});
+
+test('Alba closing is revised only in the current edition and preserves saves, read history and onward travel', async () => {
+  const h = createHelpers(content);
+  const run = h.finishCity(h.start(undefined, 'commander.rosemond'), 'alba', { stopBeforeClosing: true });
+  assert.equal(run.position.phase, 'chapterClosing');
+  const old = previous.textBlocks['text.alba.closing'];
+  assert.match(old.text, /縦切り試作は終了/);
+  assert.equal(old.textRevision, 1);
+  const block = engine.getCurrentText(run, content);
+  assert.equal(block.id, old.id);
+  assert.equal(block.speakerId, 'support.chancellor');
+  assert.equal(block.text, content.textBlocks[old.id].text);
+  assert.equal(block.readKey, 'text.alba.closing@2');
+  const { app } = await harness(run);
+  assert.ok(app.trialPage().includes(block.text));
+  const oldLog = { textId: old.id, textRevision: 1, readKey: 'text.alba.closing@1', speakerId: old.speakerId, text: old.text, sceneId: 'alba.closing' };
+  const saved = { ...run, recentDialogueLog: [...run.recentDialogueLog, oldLog] };
+  engine.validateRun(saved, content);
+  const storage = createStorage({ indexedDB: new MemoryIndexedDB(), validateRun: r => engine.validateRun(r, contentForRun(r)) });
+  const stored = await storage.commitAuto(saved, { expectedRevision: await storage.getRevision(), readTextKeys: [oldLog.readKey] });
+  assert.ok(stored.readerProfile.readTextKeys.includes(oldLog.readKey));
+  assert.ok(!stored.readerProfile.readTextKeys.includes(block.readKey));
+  assert.deepEqual((await storage.getSlot('auto')).run, saved);
+  const returned = h.read(saved);
+  assert.equal(returned.position.phase, 'map');
+  assert.equal(returned.chapterProgress.alba.status, 'completed');
+  assert.deepEqual(returned.recentDialogueLog.find(entry => entry.readKey === oldLog.readKey), oldLog);
+  assert.equal(engine.getTotalScore(returned), engine.getTotalScore(saved));
+  assert.equal(h.act(returned, 'START_REGION', { regionId: 'hexerei' }).position.regionId, 'hexerei');
 });
 
 test('all endings and sixteen governance variants keep exact block order, text, speakers and read keys', () => {
