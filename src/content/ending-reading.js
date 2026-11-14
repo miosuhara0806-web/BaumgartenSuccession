@@ -7,6 +7,12 @@ content.contentVersion = 'baumgarten-ending-reading-2026-11-03';
 content.hideMapRest = true;
 content.endingReading = true;
 
+// Correct the Alba return dialogue only in the current edition; preserve old read keys and logs.
+Object.assign(content.textBlocks['text.alba.closing'], {
+  text: 'アルバでの三つの判断を記録しました。今回提出した政策は、あくまで現王に示す案であり、ここで実施が決まるものではありません。\n\nここまでの経験も、次の都市での判断につながっていくでしょう。\n\n地図に戻り、次の目的地へ進んでください。',
+  textRevision: 2,
+});
+
 // One-based inclusive ends in the original scene block order, before condition filtering.
 // Explicit topic boundaries also keep a saved position independent of viewport width.
 function pages(name, ends) {
