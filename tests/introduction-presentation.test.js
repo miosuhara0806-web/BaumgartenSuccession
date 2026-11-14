@@ -102,14 +102,29 @@ test('the complete two novels join 54 reviewed wraps, keep the narration contras
   }
 });
 
-test('all twelve immutable content editions match their pre-fix data, including choices, manuscript, text revisions and history inputs', async () => {
+test('historical editions stay immutable and the current edition changes only the approved Alba closing dialogue', async () => {
   const packs = [];
   for (const name of ['legacy','alba','alba-final','hexerei','anchoring','rude','ehrenfels',
     'companion-dialogue-unified','prologue','ending','map-return','ending-reading']) {
     const { content } = await import(`../src/content/${name}.js`);
     packs.push([name, content]);
   }
-  assert.equal(hash(packs), '64174781a45bca9e86f0d7c1e236779fe4eb7ef98c79ffa8a822ac067b93b3db');
+  const previous = packs.find(([name]) => name === 'map-return')[1];
+  const current = packs.find(([name]) => name === 'ending-reading')[1];
+  const oldClosing = previous.textBlocks['text.alba.closing'];
+  const closing = current.textBlocks['text.alba.closing'];
+  assert.deepEqual(closing, {
+    ...oldClosing,
+    text: 'アルバでの三つの判断を記録しました。今回提出した政策は、あくまで現王に示す案であり、ここで実施が決まるものではありません。\n\nここまでの経験も、次の都市での判断につながっていくでしょう。\n\n地図に戻り、次の目的地へ進んでください。',
+    textRevision: 2,
+  });
+  // Restore only the approved fields in a copy: the frozen hash still covers all
+  // historical editions and every other field of the current edition.
+  const normalized = structuredClone(packs);
+  const normalizedClosing = normalized.find(([name]) => name === 'ending-reading')[1].textBlocks['text.alba.closing'];
+  normalizedClosing.text = oldClosing.text;
+  normalizedClosing.textRevision = oldClosing.textRevision;
+  assert.equal(hash(normalized), '64174781a45bca9e86f0d7c1e236779fe4eb7ef98c79ffa8a822ac067b93b3db');
 });
 
 test('current and historical saves render/replay without writes and acknowledge the original read keys and effects exactly once', async () => {
